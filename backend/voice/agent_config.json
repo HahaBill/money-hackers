@@ -1,0 +1,23 @@
+{
+  "name": "Café financial analyst",
+  "first_message": "I've analyzed {{period}}. {{headline_text}} Want me to walk through what caused it?",
+  "dynamic_variables": [
+    "business_name",
+    "period",
+    "headline_text",
+    "finding_count",
+    "top_finding_title",
+    "run_id"
+  ],
+  "tools": [
+    "get_briefing",
+    "get_finding",
+    "get_recommendations",
+    "get_verify_items",
+    "get_questions",
+    "record_answer",
+    "get_revisions",
+    "validate_utterance"
+  ],
+  "guardrail": "If an utterance contains a numeric token not present in the last tool results, retry. Restate using only figures returned by tools."
+}
