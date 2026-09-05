@@ -1,17 +1,17 @@
 :root {
-  --chalk: #1e2a26;
-  --paper: #fbfbfa;
-  --awning: #2f6df6;
-  --stonks: #1fa971;
-  --tomato: #d64545;
-  --amber: #e0a100;
-  --muted: #787774;
+  --chalk: #242424;
+  --paper: #fcfcfb;
+  --awning: #356ae6;
+  --stonks: #16825d;
+  --tomato: #d14444;
+  --amber: #ad7600;
+  --muted: #72726e;
   --white: #ffffff;
   --line: #e3e2df;
   --soft: #f1f1ef;
   --font-sans: 'Atkinson Hyperlegible Next Variable', 'Atkinson Hyperlegible Next', system-ui, sans-serif;
   --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
-  --rail: 15rem;
+  --rail: 13.5rem;
   color-scheme: light;
   font-family: var(--font-sans);
   font-synthesis: none;
@@ -22,7 +22,6 @@
 }
 
 html {
-  min-width: 72rem;
   background: var(--paper);
 }
 

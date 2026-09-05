@@ -6,9 +6,11 @@ import json
 import os
 import re
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Literal
 
 from dotenv import load_dotenv
+from prism_setup import emit_trace
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -38,13 +40,44 @@ def complete(
     model: str | None = None,
     route: Route = "judgment",
     effort: str = "medium",
+    session_id: str | None = None,
 ) -> str:
-    response = _client().responses.create(
-        model=model or model_for(route),
-        input=prompt,
-        reasoning={"effort": effort},
+    selected_model = model or model_for(route)
+    started = perf_counter()
+    try:
+        response = _client().responses.create(
+            model=selected_model,
+            input=prompt,
+            reasoning={"effort": effort},
+        )
+    except Exception as exc:
+        emit_trace(
+            model=selected_model,
+            input_messages=[{"role": "user", "content": prompt}],
+            output_message="",
+            latency_ms=int((perf_counter() - started) * 1000),
+            session_id=session_id,
+            status="error",
+            metadata={
+                "route": route,
+                "reasoning_effort": effort,
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise
+    usage = getattr(response, "usage", None)
+    output = response.output_text
+    emit_trace(
+        model=selected_model,
+        input_messages=[{"role": "user", "content": prompt}],
+        output_message=output,
+        latency_ms=int((perf_counter() - started) * 1000),
+        session_id=session_id,
+        token_count_input=getattr(usage, "input_tokens", 0) or 0,
+        token_count_output=getattr(usage, "output_tokens", 0) or 0,
+        metadata={"route": route, "reasoning_effort": effort},
     )
-    return response.output_text
+    return output
 
 
 def complete_json(

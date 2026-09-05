@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { driverLabel, money, percent } from '$lib/format';
   import type { Dashboard, SheetRow } from '$lib/types';
 
@@ -6,6 +7,7 @@
 
   let selected = $state<SheetRow | null>(null);
   let showInsight = $state(true);
+  let highlightedKeys = $state<string[]>([]);
   const report = $derived(dashboard.report);
   const maxImpact = $derived(
     Math.max(...dashboard.sheet_rows.map((item) => Math.abs(item.change || 0)), 1)
@@ -17,12 +19,33 @@
     }
   });
 
+  onMount(() => {
+    const highlightFromLarry = (event: Event) => {
+      const detail = (event as CustomEvent<{ sources?: string[]; text?: string }>).detail || {};
+      const sources = new Set(detail.sources || []);
+      const spokenText = (detail.text || '').toLowerCase();
+      const matches = dashboard.sheet_rows.filter((row) => {
+        const sourceMatch = Boolean(row.node && sources.has(row.node));
+        const label = driverLabel(row.label).toLowerCase();
+        const spokenMatch = row.kind === 'cause' && label.length > 3 && spokenText.includes(label);
+        return sourceMatch || spokenMatch;
+      });
+      if (!matches.length) return;
+      highlightedKeys = matches.map((row) => row.key);
+      selected = matches[0];
+      showInsight = matches[0].kind === 'cause';
+    };
+    window.addEventListener('larry:highlight', highlightFromLarry);
+    return () => window.removeEventListener('larry:highlight', highlightFromLarry);
+  });
+
   function findingFor(key: string) {
     return report.findings.find((finding) => finding.leaf === key);
   }
 
   function choose(row: SheetRow) {
     selected = row;
+    highlightedKeys = [];
     showInsight = true;
   }
 
@@ -74,6 +97,7 @@
         {#each dashboard.sheet_rows as row, index}
           <tr
             class:selected={selected?.key === row.key}
+            class:larry-highlight={highlightedKeys.includes(row.key)}
             class:cause-row={row.kind === 'cause'}
             tabindex="0"
             onclick={() => choose(row)}
@@ -140,7 +164,7 @@
   .formula-bar > strong { color: var(--muted); }
   .formula-bar a { color: var(--awning); font-weight: 700; }
   .grid-wrap { position: relative; overflow: auto; }
-  table { width: 100%; min-width: 68rem; border-collapse: collapse; table-layout: fixed; font-size: 0.88rem; }
+  table { width: 100%; min-width: 64rem; border-collapse: collapse; table-layout: fixed; font-size: 0.88rem; }
   th, td { height: 2.45rem; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 0.4rem 0.65rem; text-align: left; }
   thead { background: var(--soft); }
   thead th:first-child, .row-number { width: 2.7rem; color: var(--muted); text-align: center; font-family: var(--font-mono); font-weight: 400; }
@@ -152,6 +176,8 @@
   tbody tr { cursor: cell; }
   tbody tr:hover > *, tbody tr.selected > * { background: color-mix(in srgb, var(--awning) 6%, var(--white)); }
   tbody tr.selected > * { box-shadow: inset 0 1px var(--awning), inset 0 -1px var(--awning); }
+  tbody tr.larry-highlight > * { animation: larry-cell-highlight 1.8s ease-out; background: color-mix(in srgb, var(--awning) 10%, var(--white)); }
+  tbody tr.larry-highlight > .row-number { box-shadow: inset 3px 0 var(--awning); color: var(--awning); font-weight: 700; }
   tbody tr.cause-row th { padding-left: 1.5rem; }
   .number-cell { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .dot { display: inline-block; width: calc(var(--dot) + 0.25rem); height: calc(var(--dot) + 0.25rem); max-width: 0.75rem; max-height: 0.75rem; margin-right: 0.4rem; border-radius: 50%; background: var(--tomato); vertical-align: -0.02rem; }
@@ -168,4 +194,10 @@
   .sheet-tabs a { min-width: 6rem; border-right: 1px solid var(--line); padding: 0.45rem 0.8rem; text-align: center; white-space: nowrap; }
   .sheet-tabs a.active { border-top: 2px solid var(--stonks); background: var(--white); font-weight: 700; }
   .sheet-tabs button { min-height: 2rem; border: 0; padding: 0.2rem 0.7rem; color: var(--muted); }
+
+  @keyframes larry-cell-highlight {
+    0% { background: color-mix(in srgb, var(--awning) 24%, var(--white)); }
+    45% { background: color-mix(in srgb, var(--awning) 13%, var(--white)); }
+    100% { background: color-mix(in srgb, var(--awning) 10%, var(--white)); }
+  }
 </style>

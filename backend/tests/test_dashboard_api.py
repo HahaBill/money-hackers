@@ -91,7 +91,7 @@ def test_dashboard_falls_back_to_report_findings(monkeypatch, tmp_path):
     dashboard = TestClient(server_tools.app).get("/dashboard/report_only").json()
     assert dashboard["attribution_total"] == -120
     assert dashboard["attributions"] == [
-        {"node": None, "driver": "mix", "dollars": -75.0},
+        {"node": "f_001", "driver": "mix", "dollars": -75.0},
         {"node": None, "driver": "everything_else", "dollars": -45.0},
     ]
 
@@ -117,7 +117,34 @@ def test_chat_uses_validated_deterministic_fallback(monkeypatch, tmp_path):
     )
     assert response.status_code == 200
     assert response.json() == {
-        "answer": "Operating profit changed -120.",
+        "answer": "Operating profit decreased by $120.",
         "sources": ["headline"],
         "mode": "deterministic",
     }
+
+
+def test_chat_names_largest_attribution_from_sorted_graph_data(monkeypatch, tmp_path):
+    monkeypatch.setattr(server_tools, "RUNS", tmp_path)
+    monkeypatch.setattr(server_tools.llm, "available", lambda: False)
+    (tmp_path / "drivers.json").write_text(
+        json.dumps(
+            {
+                "run_id": "drivers",
+                "period": "2026-08",
+                "status": "complete",
+                "headline": {"change": 140.0, "node": "headline-node"},
+                "findings": [
+                    {"id": "mix-node", "leaf": "mix", "attribution_dollars": 40.0},
+                    {"id": "volume-node", "leaf": "volume", "attribution_dollars": 100.0},
+                ],
+            }
+        )
+    )
+    response = TestClient(server_tools.app).post(
+        "/chat", json={"run_id": "drivers", "message": "What changed profit?"}
+    )
+    assert response.json()["answer"] == (
+        "Operating profit increased by $140. "
+        "The largest verified contribution was more tickets at +$100."
+    )
+    assert response.json()["sources"] == ["headline-node", "volume-node"]

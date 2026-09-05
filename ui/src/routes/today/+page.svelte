@@ -28,7 +28,7 @@
       <div>
         <h2>The daily POS feed isn’t connected yet.</h2>
         <p>
-          Till won’t turn monthly evidence into a daily conclusion. The latest reconciled month is
+          Larry won’t turn monthly evidence into a daily conclusion. The latest reconciled month is
           ready below while the daily integration is added.
         </p>
       </div>

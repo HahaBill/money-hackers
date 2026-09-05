@@ -34,8 +34,8 @@
 
   function actor(node: GraphNode): string {
     if (node.provenance === 'raw') return 'Reader';
-    if (node.provenance === 'inferred' || node.type === 'finding') return 'Analyst';
-    if (node.provenance === 'retrieved') return 'Analyst';
+    if (node.provenance === 'inferred' || node.type === 'finding') return 'Larry';
+    if (node.provenance === 'retrieved') return 'Larry';
     return 'Checker';
   }
 </script>
@@ -70,7 +70,7 @@
           <tbody>
             {#each graph.nodes.slice().reverse() as node}
               <tr onclick={() => (selected = node)} class:selected={selected?.id === node.id}>
-                <td class:analyst={actor(node) === 'Analyst'}>{actor(node)}</td>
+                <td class:analyst={actor(node) === 'Larry'}>{actor(node)}</td>
                 <td><strong>{driverLabel(node.label)}</strong><span>{node.type} · {node.method || node.provenance}</span></td>
                 <td class="mono">{valueText(node)}</td>
                 <td class="mono">{percent(node.confidence * 100)}</td>
@@ -83,7 +83,7 @@
       <div class="graph-view">
         {#each ['raw', 'deterministic', 'retrieved', 'inferred'] as provenance}
           <section>
-            <h2>{provenance === 'raw' ? 'Reader' : provenance === 'deterministic' ? 'Checker' : 'Analyst'}</h2>
+            <h2>{provenance === 'raw' ? 'Reader' : provenance === 'deterministic' ? 'Checker' : 'Larry'}</h2>
             <div class="node-list">
               {#each graph.nodes.filter((node) => node.provenance === provenance).slice(0, 18) as node}
                 <button

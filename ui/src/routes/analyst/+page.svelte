@@ -18,7 +18,7 @@
 
 <div class="page analyst-page">
   <header class="page-header">
-    <div><h1>Analyst · console</h1><p class="muted">Raw graph vocabulary lives here, away from the owner’s briefing.</p></div>
+    <div><h1>Larry · data console</h1><p class="muted">Raw graph vocabulary lives here, away from the owner’s briefing.</p></div>
   </header>
 
   {#if $reportState.error}

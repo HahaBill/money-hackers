@@ -1,12 +1,17 @@
-"""PRISM Observe → Improve → Prove. Trajectories mirror RCG writes."""
+"""PRISM live traces plus Observe → Improve → Prove trajectories."""
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 import json
 import os
 from pathlib import Path
+import sys
 from typing import Any
+import uuid
 
+import httpx
 from dotenv import load_dotenv
 
 BACKEND_ROOT = Path(__file__).resolve().parent
@@ -14,6 +19,120 @@ load_dotenv(BACKEND_ROOT / ".env")
 
 AGENT_NAME = "money-talks"
 AGENT_ID = "moneytalks-1"
+DEFAULT_HOST = "https://prism-api-prod.up.railway.app"
+_SESSION_ID: ContextVar[str | None] = ContextVar("prismtrace_session_id", default=None)
+
+
+def _config() -> tuple[str, str, str] | None:
+    key = os.environ.get("PRISMTRACE_API_KEY")
+    project = os.environ.get("PRISMTRACE_PROJECT_ID")
+    host = os.environ.get("PRISMTRACE_HOST", DEFAULT_HOST).rstrip("/")
+    if not (key and project):
+        return None
+    return key, project, host
+
+
+@contextmanager
+def trace_session(session_id: str):
+    """Group model and tool events into one PRISM trajectory."""
+    token = _SESSION_ID.set(session_id)
+    try:
+        yield
+    finally:
+        _SESSION_ID.reset(token)
+
+
+def emit_trace(
+    *,
+    model: str,
+    input_messages: list[dict[str, Any]],
+    output_message: str,
+    latency_ms: int,
+    session_id: str | None = None,
+    token_count_input: int = 0,
+    token_count_output: int = 0,
+    event_type: str = "model_call",
+    status: str = "success",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Post one live event without allowing observability to break the app."""
+    config = _config()
+    if config is None:
+        return None
+    key, project, host = config
+    resolved_session_id = session_id or _SESSION_ID.get() or str(uuid.uuid4())
+    event_metadata = {
+        "framework": "openai_responses" if event_type == "model_call" else "custom",
+        "source": "money-hackers",
+        "agent_id": AGENT_ID,
+        "agent_name": AGENT_NAME,
+        "session_id": resolved_session_id,
+        "event_type": event_type,
+        "status": status,
+        **(metadata or {}),
+    }
+    payload = {
+        "project_id": project,
+        "model": model,
+        "input_messages": input_messages,
+        "output_message": output_message,
+        "latency_ms": max(0, int(latency_ms)),
+        "token_count_input": max(0, int(token_count_input)),
+        "token_count_output": max(0, int(token_count_output)),
+        "session_id": resolved_session_id,
+        "agent_id": AGENT_ID,
+        "agent_name": AGENT_NAME,
+        "metadata": event_metadata,
+    }
+    try:
+        with httpx.Client(timeout=10.0, trust_env=False) as client:
+            response = client.post(
+                f"{host}/api/traces",
+                headers={"X-PRISMtrace-Key": key},
+                json=payload,
+            )
+            response.raise_for_status()
+            return response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        print(f"PRISMtrace warning: live trace failed ({type(exc).__name__})", file=sys.stderr)
+        return None
+
+
+def trace_voice_transcript(*, conversation_id: str, transcript: list[Any]) -> dict[str, Any] | None:
+    """Forward an authenticated ElevenLabs post-call transcript without audio."""
+    config = _config()
+    if config is None:
+        return None
+    key, project, host = config
+    tracer = None
+    try:
+        from prismtrace import PRISMtraceVoiceTracer
+
+        tracer = PRISMtraceVoiceTracer(
+            api_key=key,
+            project_id=project,
+            endpoint=host,
+            agent_name="Money Hackers voice",
+            agent_id=AGENT_ID,
+            conversation_id=conversation_id,
+        )
+        for row in transcript:
+            if not isinstance(row, dict):
+                continue
+            message = str(row.get("message") or row.get("text") or "").strip()
+            if not message:
+                continue
+            if row.get("role") == "user":
+                tracer.on_user_transcript(message)
+            else:
+                tracer.on_agent_response(message)
+        return tracer.finalize(conversation_id)
+    except Exception as exc:
+        print(f"PRISMtrace warning: voice trace failed ({type(exc).__name__})", file=sys.stderr)
+        return None
+    finally:
+        if tracer is not None:
+            tracer.close()
 
 
 def _local(path: Path, payload: dict[str, Any]) -> None:
@@ -38,11 +157,10 @@ def submit_run(
         "steps": steps,
     }
     _local(out_dir / f"{run_id}.json", payload)
-    key = os.environ.get("PRISM_API_KEY")
-    host = os.environ.get("PRISM_HOST", "https://prismtrace.blockconvey.com")
-    project = os.environ.get("PRISM_PROJECT_ID")
-    if not (key and project):
+    config = _config()
+    if config is None:
         return payload
+    key, project, host = config
     try:
         from prismtrace import PRISMtrace
 

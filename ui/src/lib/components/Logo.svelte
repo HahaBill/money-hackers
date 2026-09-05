@@ -2,15 +2,9 @@
   let { compact = false }: { compact?: boolean } = $props();
 </script>
 
-<span class="logo" aria-label="Till">
-  <svg viewBox="0 0 42 36" aria-hidden="true">
-    <path class="shop" d="M7 14h21v17H7z" />
-    <path class="awning" d="M5 12h25" />
-    <path class="stripe" d="M11 12v5m7-5v5m7-5v5" />
-    <path class="door" d="M11 21h6v10h-6z" />
-    <path class="trend" d="m26 10 4-4 3 3 5-7m-5 0h5v5" />
-  </svg>
-  {#if !compact}<strong>Till</strong>{/if}
+<span class="logo" aria-label="Larry">
+  <span class="mark" aria-hidden="true"><b>L</b><i>✦</i></span>
+  {#if !compact}<strong>Larry</strong>{/if}
 </span>
 
 <style>
@@ -20,39 +14,37 @@
     gap: 0.55rem;
   }
 
-  svg {
-    width: 2.1rem;
-    height: 1.8rem;
+  .mark {
+    position: relative;
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border-radius: 0.48rem;
+    background: var(--chalk);
+    color: white;
+    box-shadow: 0 1px 2px color-mix(in srgb, black 18%, transparent);
+  }
+
+  .mark b {
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .mark i {
+    position: absolute;
+    top: -0.27rem;
+    right: -0.22rem;
+    color: var(--awning);
+    font-size: 0.6rem;
+    font-style: normal;
+    text-shadow: 0 0 0.18rem white;
   }
 
   strong {
-    font-size: 1.45rem;
-    letter-spacing: -0.02em;
-  }
-
-  .shop {
-    fill: currentColor;
-  }
-
-  .awning {
-    fill: none;
-    stroke: var(--awning);
-    stroke-width: 4;
-    stroke-linecap: round;
-  }
-
-  .stripe,
-  .door {
-    fill: none;
-    stroke: var(--paper);
-    stroke-width: 3;
-  }
-
-  .trend {
-    fill: none;
-    stroke: var(--stonks);
-    stroke-width: 3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    font-size: 1.1rem;
+    font-weight: 680;
+    letter-spacing: -0.025em;
   }
 </style>

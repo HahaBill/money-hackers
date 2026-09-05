@@ -75,7 +75,7 @@
       <hr class="section-rule" />
     </div>
     <header class="page-header desktop-only">
-      <div><h1>Ask the analyst</h1><p class="muted">Every figure comes from the current verified run.</p></div>
+      <div><h1>Ask Larry</h1><p class="muted">Every figure comes from the current verified run.</p></div>
     </header>
 
     <div class="voice-state">
@@ -94,7 +94,7 @@
     <div class="transcript" aria-live="polite">
       {#each messages as message}
         <article class:agent={message.role === 'agent'}>
-          <span>{message.role === 'agent' ? 'Analyst' : 'You'}</span>
+          <span>{message.role === 'agent' ? 'Larry' : 'You'}</span>
           <p>{message.text}</p>
         </article>
       {:else}

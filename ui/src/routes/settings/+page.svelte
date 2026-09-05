@@ -3,12 +3,12 @@
   let theme = $state<'system' | 'light' | 'dark'>('system');
 
   onMount(() => {
-    theme = (localStorage.getItem('till-theme') as typeof theme) || 'system';
+    theme = ((localStorage.getItem('larry-theme') || localStorage.getItem('till-theme')) as typeof theme) || 'system';
   });
 
   function setTheme(next: typeof theme) {
     theme = next;
-    localStorage.setItem('till-theme', next);
+    localStorage.setItem('larry-theme', next);
     if (next === 'system') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.dataset.theme = next;
   }

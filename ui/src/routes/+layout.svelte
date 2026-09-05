@@ -5,6 +5,7 @@
   import '$lib/tokens.css';
   import AnalystDock from '$lib/components/AnalystDock.svelte';
   import Logo from '$lib/components/Logo.svelte';
+  import NavIcon from '$lib/components/NavIcon.svelte';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { loadDashboard } from '$lib/api/report';
@@ -13,32 +14,32 @@
   let railHidden = $state(false);
 
   const desktopNav = [
-    { label: 'Workbook', href: '/month', icon: '▦' },
-    { label: 'Today', href: '/today', icon: '◷' },
-    { label: 'Capture', href: '/capture', icon: '▤' },
-    { label: 'Audit trail', href: '/audit', icon: '⌁' },
-    { label: 'Settings', href: '/settings', icon: '⚙' }
-  ];
+    { label: 'Workbook', href: '/month', icon: 'workbook' },
+    { label: 'Today', href: '/today', icon: 'today' },
+    { label: 'Capture', href: '/capture', icon: 'capture' },
+    { label: 'Audit trail', href: '/audit', icon: 'audit' },
+    { label: 'Settings', href: '/settings', icon: 'settings' }
+  ] as const;
   const active = (href: string) => page.url.pathname === href || page.url.pathname.startsWith(`${href}/`);
 
   onMount(() => {
-    const theme = localStorage.getItem('till-theme');
+    const theme = localStorage.getItem('larry-theme') || localStorage.getItem('till-theme');
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
-    railHidden = localStorage.getItem('till-sidebar') === 'hidden';
+    railHidden = (localStorage.getItem('larry-sidebar') || localStorage.getItem('till-sidebar')) === 'hidden';
     loadDashboard();
   });
 
   function toggleRail() {
     railHidden = !railHidden;
-    localStorage.setItem('till-sidebar', railHidden ? 'hidden' : 'open');
+    localStorage.setItem('larry-sidebar', railHidden ? 'hidden' : 'open');
   }
 </script>
 
 <svelte:head>
-  <title>Till · Financial analyst</title>
+  <title>Larry · Financial workbook</title>
   <meta
     name="description"
-    content="A traceable financial analyst for independent cafés."
+    content="Larry turns a business workbook into traceable financial answers."
   />
 </svelte:head>
 
@@ -51,7 +52,7 @@
     <nav aria-label="Primary navigation">
       {#each desktopNav as item}
         <a href={item.href} class:active={active(item.href)} aria-current={active(item.href) ? 'page' : undefined}>
-          <span class="nav-icon" aria-hidden="true">{item.icon}</span>{item.label}
+          <span class="nav-icon"><NavIcon name={item.icon} /></span>{item.label}
         </a>
       {/each}
     </nav>
@@ -89,8 +90,9 @@
     width: var(--rail);
     flex-direction: column;
     padding: 2rem 1rem 1.5rem;
-    background: var(--chalk);
-    color: var(--paper);
+    border-right: 1px solid var(--line);
+    background: #f7f7f5;
+    color: var(--chalk);
     transition: transform 160ms ease;
   }
 
@@ -113,8 +115,8 @@
   .rail-restore {
     display: grid;
     place-items: center;
-    border: 1px solid color-mix(in srgb, var(--paper) 28%, transparent);
-    color: var(--paper);
+    border: 1px solid var(--line);
+    color: var(--muted);
   }
 
   .rail-toggle {
@@ -154,14 +156,14 @@
     display: grid;
     width: 1.25rem;
     place-items: center;
-    color: color-mix(in srgb, var(--paper) 75%, transparent);
+    color: var(--muted);
     font-family: var(--font-mono);
     font-size: 1rem;
   }
 
   .rail nav a:hover,
   .rail nav a.active {
-    background: color-mix(in srgb, var(--paper) 14%, transparent);
+    background: #e9e9e7;
   }
 
   .rail nav a.active {
@@ -171,7 +173,7 @@
   .business {
     margin-top: auto;
     padding: 0 1rem;
-    color: color-mix(in srgb, var(--paper) 60%, transparent);
+    color: var(--muted);
     font-size: 0.8rem;
   }
 

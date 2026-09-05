@@ -43,8 +43,13 @@
         ...turns,
         { role: 'assistant', text: reply.answer, sources: reply.sources }
       ];
+      window.dispatchEvent(
+        new CustomEvent('larry:highlight', {
+          detail: { sources: reply.sources, text: reply.answer }
+        })
+      );
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : 'The analyst could not answer.';
+      error = cause instanceof Error ? cause.message : 'Larry could not answer.';
     } finally {
       sending = false;
     }
@@ -78,6 +83,11 @@
             ...turns,
             { role: role === 'agent' ? 'assistant' : 'user', text: message }
           ];
+          if (role === 'agent') {
+            window.dispatchEvent(
+              new CustomEvent('larry:highlight', { detail: { sources: [], text: message } })
+            );
+          }
         },
         onError: (message) => {
           error = message;
@@ -93,7 +103,7 @@
 
 {#if !open}
   <button class="larry-launcher" onclick={() => (open = true)} aria-label="Open Larry assistant">
-    <span>✦</span>
+    <span class="launcher-letter">L</span><span class="launcher-spark">✦</span>
   </button>
 {:else}
 <aside id="analyst-dock" class:full aria-label="Chat with Larry">
@@ -131,10 +141,10 @@
     <div class="messages" aria-live="polite">
       {#each turns as turn}
         <article class:assistant={turn.role === 'assistant'}>
-          <span>{turn.role === 'assistant' ? 'Analyst' : 'You'}</span>
+          <span>{turn.role === 'assistant' ? 'Larry' : 'You'}</span>
           <p>{turn.text}</p>
           {#if turn.sources?.length}
-            <small>From {turn.sources.join(' · ')}</small>
+            <a class="sources" href="/audit">{turn.sources.length} traceable workbook {turn.sources.length === 1 ? 'source' : 'sources'} →</a>
           {/if}
         </article>
       {:else}
@@ -186,9 +196,17 @@
     box-shadow: 0 0.55rem 1.5rem color-mix(in srgb, var(--chalk) 20%, transparent);
   }
 
-  .larry-launcher span {
-    color: #8aa9ff;
-    font-size: 1.4rem;
+  .launcher-letter {
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+
+  .launcher-spark {
+    position: absolute;
+    top: 0.65rem;
+    right: 0.65rem;
+    color: #8eabff;
+    font-size: 0.52rem;
   }
 
   aside {
@@ -202,7 +220,7 @@
     height: 32rem;
     overflow: hidden;
     border: 1px solid var(--line);
-    border-radius: 0.625rem;
+    border-radius: 1rem;
     background: var(--white);
     box-shadow: 0 0.65rem 2rem color-mix(in srgb, var(--chalk) 14%, transparent);
     transition: width 180ms ease, height 180ms ease, inset 180ms ease;
@@ -350,19 +368,21 @@
     background: var(--white);
   }
 
-  article > span,
-  article small {
+  article > span {
     display: block;
     color: var(--muted);
     font-size: 0.75rem;
   }
 
-  article p {
-    margin: 0.25rem 0;
+  .sources {
+    display: inline-block;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
   }
 
-  article small {
-    font-family: var(--font-mono);
+  article p {
+    margin: 0.25rem 0;
   }
 
   .empty {
@@ -375,8 +395,12 @@
 
   .empty button {
     min-height: 2.2rem;
+    border-color: var(--line);
     background: var(--white);
+    color: var(--muted);
   }
+
+  .empty button:hover { border-color: color-mix(in srgb, var(--chalk) 35%, var(--line)); color: var(--chalk); }
 
   .thinking {
     color: var(--muted);
