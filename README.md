@@ -18,6 +18,12 @@
 
 <img src="docs/larry-workbook.png" alt="Larry workbook for Garden State Coffee — August 2025 reconciled analysis with cited drivers" width="920" />
 
+<br />
+
+<video src="docs/rosas-ledger.mp4" width="920" controls>
+  <a href="docs/rosas-ledger.mp4">Watch the Rosa's Ledger demo (with audio)</a>
+</video>
+
 </div>
 
 Today, a café owner closes the month by becoming their own CFO. POS totals, supplier invoices, and a spreadsheet sit in different places. Revenue can be up while profit is down, and the owner is left reconciling the story by hand. The industry calls it "looking at the numbers." We think that's the problem.
