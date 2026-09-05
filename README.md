@@ -20,9 +20,11 @@
 
 <br />
 
-<video src="docs/rosas-ledger.mp4" width="920" controls>
-  <a href="docs/rosas-ledger.mp4">Watch the Rosa's Ledger demo (with audio)</a>
+<video src="https://github.com/HahaBill/money-hackers/releases/download/readme-demo/rosas-ledger.mp4" width="920" controls playsinline>
+  <a href="https://github.com/HahaBill/money-hackers/releases/download/readme-demo/rosas-ledger.mp4">Watch the Rosa's Ledger demo (with audio)</a>
 </video>
+
+https://github.com/HahaBill/money-hackers/releases/download/readme-demo/rosas-ledger.mp4
 
 </div>
 
