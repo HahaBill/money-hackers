@@ -78,4 +78,5 @@ def test_prism_steps_carry_graph_node_ids_and_validation_metric():
     by_label = {step["label"]: step for step in steps}
     assert by_label["decompose_shapley"]["node_ids"] == ["n_attr"]
     assert by_label["generate_findings"]["node_ids"] == ["n_find"]
+    assert by_label["generate_findings"]["output_summary"] == "-100"
     assert by_label["validate_output"]["metrics"]["unsourced_figure_rate"] == 0.0

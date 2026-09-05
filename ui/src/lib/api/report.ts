@@ -25,6 +25,7 @@ export function loadDashboard(force = false): Promise<Dashboard | null> {
       const runs = await listRuns();
       if (!runs.length) throw new Error('No completed analysis runs are available yet.');
       const selected =
+        runs.find((run) => run.run_id === 'garden_state_coffee_model') ||
         runs.find((run) => run.status === 'complete' && run.graph_node_count > 0) ||
         runs.find((run) => run.status === 'complete') ||
         runs[0];

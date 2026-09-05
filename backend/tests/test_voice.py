@@ -176,3 +176,88 @@ def test_frontend_voice_session_keeps_api_key_server_side(monkeypatch, tmp_path)
     assert response.json()["dynamic_variables"]["run_id"] == "session_test"
     assert "server-only-key" not in response.text
     assert captured["headers"]["xi-api-key"] == "server-only-key"
+
+
+def test_direct_voice_transcribes_browser_audio(monkeypatch, tmp_path):
+    from voice import server_tools
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"text": "What changed in August?"}
+
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr(server_tools, "RUNS", tmp_path)
+    monkeypatch.setattr(server_tools, "DEMO_RUNS", tmp_path / "demo-fixtures")
+    monkeypatch.setattr(server_tools.httpx, "post", fake_post)
+    monkeypatch.setattr(server_tools, "emit_trace", lambda **_kwargs: None)
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "server-only-key")
+    (tmp_path / "voice_direct.json").write_text('{"run_id":"voice_direct"}')
+
+    response = TestClient(app).post(
+        "/voice/transcribe",
+        params={"run_id": "voice_direct"},
+        content=b"webm-audio",
+        headers={"content-type": "audio/webm"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"text": "What changed in August?"}
+    assert captured["url"] == server_tools.SPEECH_TO_TEXT_ENDPOINT
+    assert captured["headers"]["xi-api-key"] == "server-only-key"
+    assert captured["data"]["model_id"] == "scribe_v2"
+
+
+def test_direct_voice_speaks_only_validated_chat_text(monkeypatch, tmp_path):
+    from voice import server_tools
+
+    class Response:
+        content = b"mp3-audio"
+        headers = {"content-type": "audio/mpeg"}
+
+        def raise_for_status(self):
+            return None
+
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr(server_tools, "RUNS", tmp_path)
+    monkeypatch.setattr(server_tools, "DEMO_RUNS", tmp_path / "demo-fixtures")
+    monkeypatch.setattr(server_tools.httpx, "post", fake_post)
+    monkeypatch.setattr(server_tools, "emit_trace", lambda **_kwargs: None)
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "server-only-key")
+    (tmp_path / "voice_speak.json").write_text(
+        json.dumps(
+            {
+                "run_id": "voice_speak",
+                "headline": {"metric": "operating_profit", "change": -120.0},
+                "findings": [],
+            }
+        )
+    )
+
+    response = TestClient(app).post(
+        "/voice/speak",
+        json={"run_id": "voice_speak", "text": "Operating profit decreased by $120."},
+    )
+    assert response.status_code == 200
+    assert response.content == b"mp3-audio"
+    assert captured["headers"]["xi-api-key"] == "server-only-key"
+    assert captured["json"]["text"] == "Operating profit decreased by $120."
+
+    rejected = TestClient(app).post(
+        "/voice/speak",
+        json={"run_id": "voice_speak", "text": "Operating profit decreased by $999."},
+    )
+    assert rejected.status_code == 400

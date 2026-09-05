@@ -22,6 +22,8 @@ export function monthLabel(period: string): string {
 }
 
 const labels: Record<string, string> = {
+  revenue: 'Revenue',
+  cogs: 'COGS',
   traffic: 'More visitors',
   conversion: 'Buyer conversion',
   volume: 'More tickets',
@@ -33,6 +35,16 @@ const labels: Record<string, string> = {
   fixed_labor: 'Labor cost',
   labor: 'Labor cost',
   rent: 'Rent',
+  rent_cam: 'Rent + CAM',
+  merchant_pos_fees: 'Merchant / POS fees',
+  utilities: 'Utilities',
+  insurance: 'Insurance',
+  repairs_maintenance: 'Repairs & maintenance',
+  cleaning_supplies: 'Cleaning / supplies',
+  marketing: 'Marketing',
+  software_admin: 'Software / accounting / admin',
+  miscellaneous: 'Miscellaneous',
+  rounding_adjustment: 'CSV rounding adjustment',
   electricity: 'Electricity',
   electricity_variable: 'Electricity use',
   electricity_fixed: 'Electricity base cost',

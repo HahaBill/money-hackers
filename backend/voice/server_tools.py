@@ -12,14 +12,14 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from agent import llm
 from agent.memory import Memory
 from agent.questions import support_for_option
-from prism_setup import trace_voice_transcript
+from prism_setup import emit_trace, trace_voice_transcript
 from rcg.store import GraphStore
 from rcg.validator import ValidationError, extract_numbers, validate_text
 from voice.postcall import store_transcript
@@ -27,20 +27,20 @@ from voice.postcall import store_transcript
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(BACKEND_ROOT / ".env")
 RUNS = BACKEND_ROOT / "runs"
+DEMO_RUNS = BACKEND_ROOT / "data" / "demo"
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 WEBHOOK_MAX_AGE_SECONDS = 30 * 60
 SIGNED_URL_ENDPOINT = "https://api.elevenlabs.io/v1/convai/conversation/get-signed-url"
+SPEECH_TO_TEXT_ENDPOINT = "https://api.elevenlabs.io/v1/speech-to-text"
+TEXT_TO_SPEECH_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+DEFAULT_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"
+MAX_VOICE_BYTES = 12 * 1024 * 1024
 app = FastAPI(title="money-talks backend")
-default_frontend_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-configured_frontend_origins = [
+frontend_origins = [
     origin.strip()
     for origin in os.environ.get("FRONTEND_ORIGINS", "").split(",")
     if origin.strip()
 ]
-frontend_origins = list(dict.fromkeys(default_frontend_origins + configured_frontend_origins))
 if frontend_origins:
     app.add_middleware(
         CORSMiddleware,
@@ -54,10 +54,11 @@ if frontend_origins:
 def _load(run_id: str) -> dict:
     if not SAFE_ID.fullmatch(run_id):
         raise HTTPException(400, "invalid run id")
-    path = RUNS / f"{run_id}.json"
-    if not path.exists():
-        raise HTTPException(404, f"run {run_id} not found")
-    return json.loads(path.read_text())
+    for directory in (RUNS, DEMO_RUNS):
+        path = directory / f"{run_id}.json"
+        if path.exists():
+            return json.loads(path.read_text())
+    raise HTTPException(404, f"run {run_id} not found")
 
 
 @app.get("/health")
@@ -69,16 +70,28 @@ def _run_summaries() -> list[dict]:
     graph_counts: dict[str, int] = {}
     graph_path = RUNS / "rcg.duckdb"
     if graph_path.exists():
-        store = GraphStore(graph_path)
         try:
-            for node in store.nodes():
-                graph_run_id = node.get("run_id")
-                if isinstance(graph_run_id, str):
-                    graph_counts[graph_run_id] = graph_counts.get(graph_run_id, 0) + 1
-        finally:
-            store.con.close()
+            store = GraphStore(graph_path)
+            try:
+                for node in store.nodes():
+                    graph_run_id = node.get("run_id")
+                    if isinstance(graph_run_id, str):
+                        graph_counts[graph_run_id] = graph_counts.get(graph_run_id, 0) + 1
+            finally:
+                store.con.close()
+        except Exception:
+            # The live dashboard can still use validated report JSON while a pipeline
+            # worker briefly owns DuckDB's write lock.
+            graph_counts = {}
     summaries = []
-    for path in RUNS.glob("*.json"):
+    seen_run_ids: set[str] = set()
+    report_paths = [
+        path
+        for directory in (RUNS, DEMO_RUNS)
+        if directory.exists()
+        for path in directory.glob("*.json")
+    ]
+    for path in report_paths:
         try:
             data = json.loads(path.read_text())
         except (OSError, json.JSONDecodeError):
@@ -86,6 +99,10 @@ def _run_summaries() -> list[dict]:
         run_id = data.get("run_id")
         if not isinstance(run_id, str) or not SAFE_ID.fullmatch(run_id):
             continue
+        if run_id in seen_run_ids:
+            continue
+        seen_run_ids.add(run_id)
+        workbook_rows = data.get("workbook_rows") or []
         summaries.append(
             {
                 "run_id": run_id,
@@ -93,7 +110,7 @@ def _run_summaries() -> list[dict]:
                 "status": data.get("status", "unknown"),
                 "headline": data.get("headline"),
                 "finding_count": len(data.get("findings") or []),
-                "graph_node_count": graph_counts.get(run_id, 0),
+                "graph_node_count": graph_counts.get(run_id, len(workbook_rows)),
                 "updated_at": path.stat().st_mtime,
             }
         )
@@ -126,25 +143,79 @@ def _decode_graph_row(row: dict) -> dict:
     return decoded
 
 
+def _workbook_graph_rows(report: dict) -> tuple[list[dict], list[dict]]:
+    rows = report.get("workbook_rows") or []
+    if not isinstance(rows, list):
+        return [], []
+    period = str(report.get("period") or "")
+    run_id = str(report.get("run_id") or "")
+    provenance = f"workbook:{report.get('source_workbook') or 'imported workbook'}"
+    nodes = []
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("node"):
+            continue
+        is_cause = row.get("kind") == "cause"
+        nodes.append(
+            {
+                "id": row["node"],
+                "type": "attribution" if is_cause else "metric",
+                "period": period,
+                "run_id": run_id,
+                "label": row.get("key") or row.get("label"),
+                "value": row.get("change") if is_cause else row.get("current"),
+                "unit": "USD",
+                "formula": "August minus July" if row.get("change") is not None else None,
+                "method": "imported_workbook",
+                "inputs": [],
+                "confidence": row.get("confidence", 1.0),
+                "status": "verified",
+                "supersedes": None,
+                "provenance": provenance,
+                "payload": {
+                    "prior": row.get("prior"),
+                    "current": row.get("current"),
+                    "note": row.get("note"),
+                },
+            }
+        )
+    headline_node = (report.get("headline") or {}).get("node")
+    node_ids = {node["id"] for node in nodes}
+    edges = [
+        {
+            "src": node["id"],
+            "dst": headline_node,
+            "type": "contributes_to",
+            "period": period,
+            "run_id": run_id,
+        }
+        for node in nodes
+        if node["type"] == "attribution" and headline_node in node_ids and node["id"] != headline_node
+    ]
+    return nodes, edges
+
+
 def _graph_rows(run_id: str) -> tuple[list[dict], list[dict]]:
-    _load(run_id)
+    report = _load(run_id)
     graph_path = RUNS / "rcg.duckdb"
     if not graph_path.exists():
-        return [], []
-    store = GraphStore(graph_path)
+        return _workbook_graph_rows(report)
     try:
-        nodes = [_decode_graph_row(row) for row in store.nodes(run_id=run_id)]
-        node_ids = {row["id"] for row in nodes}
-        edges = [
-            row
-            for row in store.edges()
-            if row.get("run_id") == run_id
-            and row.get("src") in node_ids
-            and row.get("dst") in node_ids
-        ]
-        return nodes, edges
-    finally:
-        store.con.close()
+        store = GraphStore(graph_path)
+        try:
+            nodes = [_decode_graph_row(row) for row in store.nodes(run_id=run_id)]
+            node_ids = {row["id"] for row in nodes}
+            edges = [
+                row
+                for row in store.edges()
+                if row.get("run_id") == run_id
+                and row.get("src") in node_ids
+                and row.get("dst") in node_ids
+            ]
+            return (nodes, edges) if nodes else _workbook_graph_rows(report)
+        finally:
+            store.con.close()
+    except Exception:
+        return _workbook_graph_rows(report)
 
 
 @app.get("/runs/{run_id}/graph")
@@ -167,6 +238,8 @@ def get_dashboard(run_id: str):
     report = _load(run_id)
     nodes, edges = _graph_rows(run_id)
     metrics: dict[str, object] = {}
+    if isinstance(report.get("metrics"), dict):
+        metrics.update(report["metrics"])
     attributions = []
     for node in nodes:
         if node.get("type") == "metric":
@@ -197,20 +270,21 @@ def get_dashboard(run_id: str):
                     "dollars": round(value, 2),
                 }
             )
-    attributions.sort(key=lambda item: abs(item["dollars"]), reverse=True)
     headline_total = _number((report.get("headline") or {}).get("change"))
     total = round(
         headline_total if headline_total is not None else sum(item["dollars"] for item in attributions),
         2,
     )
-    unexplained = round(total - sum(item["dollars"] for item in attributions), 2)
-    if abs(unexplained) >= 0.005:
-        attributions.append(
-            {"node": None, "driver": "everything_else", "dollars": unexplained}
-        )
-    attribution_summary = list(attributions[:4])
+    primary_attributions = [item for item in attributions if item["driver"] != "everything_else"]
+    primary_attributions.sort(key=lambda item: abs(item["dollars"]), reverse=True)
+    residual = round(total - sum(item["dollars"] for item in primary_attributions), 2)
+    attributions = list(primary_attributions)
+    if abs(residual) >= 0.005:
+        attributions.append({"node": None, "driver": "everything_else", "dollars": residual})
+
+    attribution_summary = list(primary_attributions[:4])
     remaining = round(total - sum(item["dollars"] for item in attribution_summary), 2)
-    if len(attributions) > 4 or remaining:
+    if abs(remaining) >= 0.005:
         attribution_summary.append(
             {"node": None, "driver": "everything_else", "dollars": remaining}
         )
@@ -260,6 +334,8 @@ def get_dashboard(run_id: str):
                 "node": attribution.get("node"),
             }
         )
+    if isinstance(report.get("workbook_rows"), list):
+        sheet_rows = [dict(row) for row in report["workbook_rows"] if isinstance(row, dict)]
     return {
         "business": {
             "name": os.environ.get("BUSINESS_NAME") or "Garden State Coffee",
@@ -294,6 +370,8 @@ def _money(value: float, *, signed: bool = True) -> str:
 
 def _plain_driver(value: str) -> str:
     labels = {
+        "revenue": "sales",
+        "cogs": "cost of goods sold",
         "volume": "more tickets",
         "traffic": "more visitors",
         "conversion": "customer conversion",
@@ -303,6 +381,16 @@ def _plain_driver(value: str) -> str:
         "labor": "labor",
         "rent": "rent",
         "electricity": "electricity",
+        "utilities": "utilities",
+        "rent_cam": "rent and CAM",
+        "merchant_pos_fees": "merchant and POS fees",
+        "insurance": "insurance",
+        "repairs_maintenance": "repairs and maintenance",
+        "cleaning_supplies": "cleaning and supplies",
+        "marketing": "marketing",
+        "software_admin": "software, accounting, and admin",
+        "miscellaneous": "miscellaneous costs",
+        "rounding_adjustment": "source rounding",
         "other_opex": "other operating costs",
         "everything_else": "everything else",
     }
@@ -315,8 +403,18 @@ def _plain_driver(value: str) -> str:
     return value.replace("_", " ").replace(".", " ")
 
 
+def _headline_label(report: dict) -> str:
+    metric = str((report.get("headline") or {}).get("metric") or "operating_profit")
+    return {
+        "adjusted_ebitda": "Adjusted EBITDA",
+        "store_ebitda": "Store EBITDA",
+        "operating_profit": "Operating profit",
+    }.get(metric, metric.replace("_", " ").title())
+
+
 def _chat_fallback(data: dict, message: str) -> tuple[str, list[str]]:
     report = data["report"]
+    headline_label = _headline_label(report)
     narrative = report.get("narrative") or {}
     lowered = message.lower()
     attributions = data.get("attributions") or []
@@ -351,7 +449,7 @@ def _chat_fallback(data: dict, message: str) -> tuple[str, list[str]]:
         total = _number(data.get("attribution_total"))
         if total is not None:
             direction = "increased" if total > 0 else "decreased" if total < 0 else "did not change"
-            answer = f"Operating profit {direction} by {_money(abs(total), signed=False)}."
+            answer = f"{headline_label} {direction} by {_money(abs(total), signed=False)}."
             sources = [str(headline_node)] if headline_node else ["headline"]
             if attributions and attributions[0].get("driver") != "everything_else":
                 leading = attributions[0]
@@ -403,7 +501,9 @@ def chat_with_workbook(body: ChatIn):
         "questions": data["report"].get("questions") or [],
         "narrative": data["report"].get("narrative") or {},
         "reconciliation": data["report"].get("reconciliation"),
-        "prevalidated_summary": fallback,
+        "prevalidated_summary": data["report"].get("prevalidated_summary") or fallback,
+        "source_workbook": data["report"].get("source_workbook"),
+        "workbook_rows": data["report"].get("workbook_rows") or [],
     }
     history = [item.model_dump() for item in body.history[-8:]]
     prompt = (
@@ -443,6 +543,90 @@ def chat_with_workbook(body: ChatIn):
     except Exception:
         return {"answer": fallback, "sources": fallback_sources, "mode": "deterministic"}
     return {"answer": answer, "sources": fallback_sources, "mode": "model"}
+
+
+class VoiceSpeakIn(BaseModel):
+    run_id: str
+    text: str = Field(min_length=1, max_length=2_000)
+
+
+@app.post("/voice/transcribe")
+async def transcribe_voice(request: Request, run_id: str):
+    """Transcribe a browser recording without exposing the ElevenLabs key."""
+    _load(run_id)
+    api_key = os.environ.get("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "Voice transcription is not configured")
+    audio = await request.body()
+    if not audio:
+        raise HTTPException(400, "Audio recording is empty")
+    if len(audio) > MAX_VOICE_BYTES:
+        raise HTTPException(413, "Audio recording is too large")
+    media_type = request.headers.get("content-type", "audio/webm").split(";", 1)[0]
+    started = time.perf_counter()
+    try:
+        upstream = httpx.post(
+            SPEECH_TO_TEXT_ENDPOINT,
+            headers={"xi-api-key": api_key},
+            files={"file": ("larry-recording.webm", audio, media_type)},
+            data={"model_id": "scribe_v2"},
+            timeout=45.0,
+        )
+        upstream.raise_for_status()
+        transcript = str(upstream.json().get("text") or "").strip()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(502, "Voice transcription failed") from exc
+    if not transcript:
+        raise HTTPException(422, "No speech was detected")
+    emit_trace(
+        model="elevenlabs-scribe-v2",
+        input_messages=[{"role": "user", "content": "[audio omitted]"}],
+        output_message=transcript,
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        session_id=f"workbook-voice:{run_id}",
+        metadata={"provider": "elevenlabs", "entry_point": "voice/transcribe"},
+    )
+    return {"text": transcript}
+
+
+@app.post("/voice/speak")
+def speak_voice(body: VoiceSpeakIn):
+    """Speak a validated Larry reply through ElevenLabs text-to-speech."""
+    data = get_dashboard(body.run_id)
+    try:
+        validate_text(body.text, {"dashboard": data})
+    except ValidationError as exc:
+        raise HTTPException(400, "Voice text contains an unverified figure") from exc
+    api_key = os.environ.get("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "Voice playback is not configured")
+    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", DEFAULT_VOICE_ID)
+    model_id = os.environ.get("ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5")
+    started = time.perf_counter()
+    try:
+        upstream = httpx.post(
+            TEXT_TO_SPEECH_ENDPOINT.format(voice_id=voice_id),
+            params={"output_format": "mp3_44100_128"},
+            headers={"xi-api-key": api_key, "content-type": "application/json"},
+            json={"text": body.text, "model_id": model_id},
+            timeout=45.0,
+        )
+        upstream.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "Voice playback failed") from exc
+    emit_trace(
+        model=f"elevenlabs-{model_id}",
+        input_messages=[{"role": "assistant", "content": body.text}],
+        output_message="[audio generated]",
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        session_id=f"workbook-voice:{body.run_id}",
+        metadata={"provider": "elevenlabs", "entry_point": "voice/speak"},
+    )
+    return Response(
+        content=upstream.content,
+        media_type=upstream.headers.get("content-type", "audio/mpeg"),
+        headers={"cache-control": "no-store"},
+    )
 
 
 def _dynamic_variables(data: dict, run_id: str) -> dict[str, str]:

@@ -73,6 +73,41 @@ export function createVoiceSession(runId: string) {
   }>(`/voice/session?run_id=${encodeURIComponent(runId)}`);
 }
 
+async function responseError(response: Response): Promise<ApiError> {
+  let message = `Request failed (${response.status})`;
+  try {
+    const body = await response.json();
+    message = body.detail || message;
+  } catch {
+    // Keep the status-based message when an upstream proxy returns HTML.
+  }
+  return new ApiError(message, response.status);
+}
+
+export async function transcribeVoice(runId: string, audio: Blob): Promise<string> {
+  const response = await fetch(
+    `${API_BASE}/voice/transcribe?run_id=${encodeURIComponent(runId)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': audio.type || 'audio/webm' },
+      body: audio
+    }
+  );
+  if (!response.ok) throw await responseError(response);
+  const body = (await response.json()) as { text: string };
+  return body.text;
+}
+
+export async function speakVoice(runId: string, text: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/voice/speak`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ run_id: runId, text })
+  });
+  if (!response.ok) throw await responseError(response);
+  return response.blob();
+}
+
 export function askWorkbook(runId: string, message: string, history: ChatTurn[]) {
   return request<ChatReply>('/chat', {
     method: 'POST',

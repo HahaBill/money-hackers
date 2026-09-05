@@ -108,6 +108,21 @@ export type RunReport = {
   concentrations?: Concentration[];
   narrative?: Record<string, string | Record<string, string>>;
   checks?: Array<{ label?: string; status?: string; detail?: string }>;
+  source_workbook?: string;
+  prevalidated_summary?: string;
+  workbook_rows?: SheetRow[];
+  observability?: {
+    provider: string;
+    captured_at: string;
+    live_traces: number;
+    active_agents: number;
+    average_latency_seconds: number;
+    guardrail_blocks: number;
+    compliance_score_pct: number;
+    cost_today: number;
+    agent_name: string;
+    model: string;
+  };
 };
 
 export type RunSummary = {

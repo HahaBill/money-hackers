@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { driverLabel, money, percent } from '$lib/format';
+  import { driverLabel, money, monthLabel, percent } from '$lib/format';
   import type { Dashboard, SheetRow } from '$lib/types';
 
   let { dashboard }: { dashboard: Dashboard } = $props();
@@ -9,6 +9,15 @@
   let showInsight = $state(true);
   let highlightedKeys = $state<string[]>([]);
   const report = $derived(dashboard.report);
+  const currentPeriod = $derived(monthLabel(report.period));
+  const priorPeriod = $derived.by(() => {
+    const [year, month] = report.period.split('-').map(Number);
+    const prior = new Date(year, month - 2, 1);
+    return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(prior);
+  });
+  const selectedRow = $derived(
+    selected ? dashboard.sheet_rows.findIndex((row) => row.key === selected?.key) + 1 : 1
+  );
   const maxImpact = $derived(
     Math.max(...dashboard.sheet_rows.map((item) => Math.abs(item.change || 0)), 1)
   );
@@ -32,8 +41,9 @@
       });
       if (!matches.length) return;
       highlightedKeys = matches.map((row) => row.key);
-      selected = matches[0];
-      showInsight = matches[0].kind === 'cause';
+      const primary = matches.find((row) => row.kind === 'cause') || matches[0];
+      selected = primary;
+      showInsight = primary.kind === 'cause';
     };
     window.addEventListener('larry:highlight', highlightFromLarry);
     return () => window.removeEventListener('larry:highlight', highlightFromLarry);
@@ -61,7 +71,7 @@
 
 <section class="workbook" aria-label={`Workbook analysis for ${report.period}`}>
   <div class="workbook-bar">
-    <div class="file-state"><span class="sheet-icon">▦</span><strong>August analysis</strong><span>Saved</span></div>
+    <div class="file-state"><span class="sheet-icon">▦</span><strong>{report.source_workbook || 'Imported workbook'}</strong><span>Imported</span></div>
     <div class="sheet-tools" aria-label="Workbook tools">
       <button aria-label="Undo" title="Undo">↶</button>
       <button aria-label="Redo" title="Redo">↷</button>
@@ -73,7 +83,7 @@
   </div>
 
   <div class="formula-bar">
-    <span class="name-box">{selected ? `${selected.kind === 'metric' ? 'B' : 'D'}${dashboard.sheet_rows.indexOf(selected) + 2}` : 'A1'}</span>
+    <span class="name-box">{selected ? `${selected.kind === 'metric' ? 'B' : 'D'}${selectedRow}` : 'A1'}</span>
     <strong>fx</strong>
     {#if selected}
       <span>
@@ -91,7 +101,7 @@
     <table>
       <thead>
         <tr class="letters"><th></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th></tr>
-        <tr><th></th><th>Account / driver</th><th>Prior period</th><th>August</th><th>Change</th><th>Confidence</th><th>What Larry noticed</th></tr>
+        <tr><th></th><th>Account / driver</th><th>{priorPeriod}</th><th>{currentPeriod}</th><th>Change</th><th>Confidence</th><th>What Larry noticed</th></tr>
       </thead>
       <tbody>
         {#each dashboard.sheet_rows as row, index}

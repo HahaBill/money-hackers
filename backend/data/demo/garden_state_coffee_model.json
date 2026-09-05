@@ -1,0 +1,69 @@
+{
+  "run_id": "garden_state_coffee_model",
+  "period": "2025-08",
+  "status": "complete",
+  "reconciliation": "passed",
+  "confidence_regime": "workbook_actuals",
+  "source_workbook": "CoffeeshopFinancials.csv",
+  "observability": {
+    "provider": "PRISM",
+    "captured_at": "2026-09-05",
+    "live_traces": 7,
+    "active_agents": 1,
+    "average_latency_seconds": 7.5,
+    "guardrail_blocks": 0,
+    "compliance_score_pct": 30.0,
+    "cost_today": 0.088,
+    "agent_name": "money-talks",
+    "model": "gpt-6-astra"
+  },
+  "headline": {
+    "metric": "adjusted_ebitda",
+    "change": -13802.0,
+    "change_pct": -55.5,
+    "context": "revenue -27360",
+    "node": "xlsx_adjusted_ebitda"
+  },
+  "metrics": {
+    "prior_revenue": 144000.0,
+    "revenue": 116640.0,
+    "prior_profit": -24879.0,
+    "curr_profit": -38681.0
+  },
+  "workbook_rows": [
+    {"key": "revenue", "kind": "cause", "label": "Revenue", "prior": 144000.0, "current": 116640.0, "change": -27360.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_revenue"},
+    {"key": "cogs", "kind": "cause", "label": "COGS", "prior": -69350.0, "current": -67738.0, "change": 1612.0, "confidence": 1.0, "note": "Lower expense partially offset the revenue decline", "node": "xlsx_cogs"},
+    {"key": "gross_profit", "kind": "metric", "label": "Gross profit", "prior": 74650.0, "current": 48902.0, "change": -25748.0, "confidence": 1.0, "note": "CSV subtotal", "node": "xlsx_gross_profit"},
+    {"key": "labor", "kind": "cause", "label": "Total labor", "prior": -43920.0, "current": -35575.0, "change": 8345.0, "confidence": 1.0, "note": "Lower expense partially offset the revenue decline", "node": "xlsx_labor"},
+    {"key": "rent_cam", "kind": "cause", "label": "Rent + CAM", "prior": -23254.0, "current": -22714.0, "change": 540.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_rent_cam"},
+    {"key": "merchant_pos_fees", "kind": "cause", "label": "Merchant / POS fees", "prior": -4176.0, "current": -3383.0, "change": 793.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_merchant_pos_fees"},
+    {"key": "utilities", "kind": "cause", "label": "Utilities", "prior": -5697.0, "current": -5564.0, "change": 133.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_utilities"},
+    {"key": "insurance", "kind": "cause", "label": "Insurance", "prior": -1440.0, "current": -1166.0, "change": 274.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_insurance"},
+    {"key": "repairs_maintenance", "kind": "cause", "label": "Repairs & maintenance", "prior": -2016.0, "current": -1633.0, "change": 383.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_repairs_maintenance"},
+    {"key": "cleaning_supplies", "kind": "cause", "label": "Cleaning / supplies", "prior": -2304.0, "current": -1866.0, "change": 438.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_cleaning_supplies"},
+    {"key": "marketing", "kind": "cause", "label": "Marketing", "prior": -1728.0, "current": -1400.0, "change": 328.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_marketing"},
+    {"key": "software_admin", "kind": "cause", "label": "Software / accounting / admin", "prior": -2160.0, "current": -1750.0, "change": 410.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_software_admin"},
+    {"key": "miscellaneous", "kind": "cause", "label": "Miscellaneous", "prior": -1584.0, "current": -1283.0, "change": 301.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_miscellaneous"},
+    {"key": "rounding_adjustment", "kind": "cause", "label": "CSV rounding adjustment", "prior": null, "current": null, "change": 1.0, "confidence": 1.0, "note": "Reconciles rounded source rows to the reported subtotal", "node": "xlsx_rounding_adjustment"},
+    {"key": "store_ebitda", "kind": "metric", "label": "Store EBITDA", "prior": -13629.0, "current": -27431.0, "change": -13802.0, "confidence": 1.0, "note": "CSV subtotal", "node": "xlsx_store_ebitda"},
+    {"key": "owner_overhead", "kind": "metric", "label": "Owner/GM + corporate overhead", "prior": -11250.0, "current": -11250.0, "change": 0.0, "confidence": 1.0, "note": "No month-over-month change", "node": "xlsx_owner_overhead"},
+    {"key": "adjusted_ebitda", "kind": "metric", "label": "Adjusted EBITDA", "prior": -24879.0, "current": -38681.0, "change": -13802.0, "confidence": 1.0, "note": "CSV actuals, July to August 2025", "node": "xlsx_adjusted_ebitda"}
+  ],
+  "findings": [
+    {"id": "f_revenue", "severity": "high", "title": "Revenue -27360", "leaf": "revenue", "attribution_dollars": -27360.0, "z": 0.0, "confidence": 1.0, "attribution": ["xlsx_revenue"], "concentration": [], "hypotheses": [], "evidence": ["xlsx_revenue"], "simulations": [], "directives": [], "node": "finding_revenue"},
+    {"id": "f_labor", "severity": "medium", "title": "Labor +8345", "leaf": "labor", "attribution_dollars": 8345.0, "z": 0.0, "confidence": 1.0, "attribution": ["xlsx_labor"], "concentration": [], "hypotheses": [], "evidence": ["xlsx_labor"], "simulations": [], "directives": [], "node": "finding_labor"},
+    {"id": "f_cogs", "severity": "medium", "title": "COGS +1612", "leaf": "cogs", "attribution_dollars": 1612.0, "z": 0.0, "confidence": 1.0, "attribution": ["xlsx_cogs"], "concentration": [], "hypotheses": [], "evidence": ["xlsx_cogs"], "simulations": [], "directives": [], "node": "finding_cogs"}
+  ],
+  "verify": [],
+  "questions": [],
+  "simulations": [],
+  "directives": [],
+  "concentrations": [],
+  "narrative": {
+    "briefing": "Adjusted EBITDA decreased by $13,802 in August, from -$24,879 in July to -$38,681. Revenue decreased by $27,360; lower labor and COGS expense partially offset it.",
+    "walkthrough": "Revenue decreased by $27,360. Lower labor expense contributed +$8,345 and lower COGS expense contributed +$1,612. The remaining P&L lines and a $1 source rounding adjustment reconcile the bridge to -$13,802.",
+    "recommendations": "No modeled recommendation is available in this workbook run.",
+    "verify": "No verification items are available in this workbook run."
+  },
+  "prevalidated_summary": "Adjusted EBITDA decreased by $13,802 in August, from -$24,879 in July to -$38,681. Revenue decreased by $27,360; lower labor and COGS expense partially offset it."
+}

@@ -287,6 +287,11 @@ def steps_from_findings(findings: dict[str, Any], phi: dict[str, float]) -> list
         },
     ]
     for step in steps:
+        summary = step.get("output_summary")
+        if summary is None:
+            step.pop("output_summary", None)
+        else:
+            step["output_summary"] = str(summary)
         if "node_ids" in step:
             step["node_ids"] = [node for node in step["node_ids"] if node]
     return steps

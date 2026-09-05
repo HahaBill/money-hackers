@@ -8,6 +8,7 @@ from voice import server_tools
 
 def test_run_discovery_and_dashboard_graph(monkeypatch, tmp_path):
     monkeypatch.setattr(server_tools, "RUNS", tmp_path)
+    monkeypatch.setattr(server_tools, "DEMO_RUNS", tmp_path / "demo-fixtures")
     (tmp_path / "demo.json").write_text(
         json.dumps(
             {
@@ -66,9 +67,20 @@ def test_run_discovery_and_dashboard_graph(monkeypatch, tmp_path):
 
 def test_runs_ignores_memory_and_invalid_json(monkeypatch, tmp_path):
     monkeypatch.setattr(server_tools, "RUNS", tmp_path)
+    monkeypatch.setattr(server_tools, "DEMO_RUNS", tmp_path / "demo-fixtures")
     (tmp_path / "memory.json").write_text('{"version": 1}')
     (tmp_path / "broken.json").write_text("not-json")
     assert TestClient(server_tools.app).get("/runs").json() == {"runs": []}
+
+
+def test_csv_demo_is_available_and_reconciles():
+    dashboard = TestClient(server_tools.app).get("/dashboard/garden_state_coffee_model").json()
+    assert dashboard["report"]["period"] == "2025-08"
+    assert dashboard["report"]["source_workbook"] == "CoffeeshopFinancials.csv"
+    assert dashboard["attribution_total"] == -13802.0
+    assert sum(item["dollars"] for item in dashboard["attributions"]) == -13802.0
+    assert dashboard["sheet_rows"][0]["current"] == 116640.0
+    assert dashboard["sheet_rows"][-1]["current"] == -38681.0
 
 
 def test_dashboard_falls_back_to_report_findings(monkeypatch, tmp_path):
@@ -94,6 +106,33 @@ def test_dashboard_falls_back_to_report_findings(monkeypatch, tmp_path):
         {"node": "f_001", "driver": "mix", "dollars": -75.0},
         {"node": None, "driver": "everything_else", "dollars": -45.0},
     ]
+
+
+def test_dashboard_has_only_one_residual_per_attribution_view(monkeypatch, tmp_path):
+    monkeypatch.setattr(server_tools, "RUNS", tmp_path)
+    (tmp_path / "residual.json").write_text(
+        json.dumps(
+            {
+                "run_id": "residual",
+                "period": "2026-08",
+                "status": "complete",
+                "headline": {"change": 100.0},
+                "findings": [
+                    {"id": "a", "leaf": "volume", "attribution_dollars": 50.0},
+                    {"id": "b", "leaf": "mix", "attribution_dollars": 30.0},
+                    {"id": "c", "leaf": "price", "attribution_dollars": 20.0},
+                    {"id": "d", "leaf": "labor", "attribution_dollars": 10.0},
+                    {"id": "e", "leaf": "electricity", "attribution_dollars": 5.0},
+                    {"id": "f", "leaf": "everything_else", "attribution_dollars": -15.0},
+                ],
+            }
+        )
+    )
+    dashboard = TestClient(server_tools.app).get("/dashboard/residual").json()
+    assert sum(item["driver"] == "everything_else" for item in dashboard["attributions"]) == 1
+    assert sum(item["driver"] == "everything_else" for item in dashboard["attribution_summary"]) == 1
+    assert sum(item["dollars"] for item in dashboard["attributions"]) == 100.0
+    assert sum(item["dollars"] for item in dashboard["attribution_summary"]) == 100.0
 
 
 def test_chat_uses_validated_deterministic_fallback(monkeypatch, tmp_path):

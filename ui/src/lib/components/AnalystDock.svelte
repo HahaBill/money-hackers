@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import type { Conversation as ConversationInstance } from '@elevenlabs/client';
-  import { askWorkbook, createVoiceSession } from '$lib/api/client';
+  import { askWorkbook, speakVoice, transcribeVoice } from '$lib/api/client';
   import { reportState } from '$lib/api/report';
   import type { ChatTurn } from '$lib/types';
 
@@ -13,10 +12,18 @@
   let sending = $state(false);
   let error = $state<string | null>(null);
   let turns = $state<VisibleTurn[]>([]);
-  let conversation = $state<ConversationInstance | null>(null);
-  let voiceStatus = $state<'idle' | 'connecting' | 'listening' | 'speaking'>('idle');
+  let recorder = $state<MediaRecorder | null>(null);
+  let mediaStream = $state<MediaStream | null>(null);
+  let playback = $state<HTMLAudioElement | null>(null);
+  let playbackUrl = $state<string | null>(null);
+  let voiceStatus = $state<'idle' | 'recording' | 'transcribing' | 'speaking'>('idle');
 
-  onDestroy(() => conversation?.endSession());
+  onDestroy(() => {
+    if (recorder?.state === 'recording') recorder.stop();
+    mediaStream?.getTracks().forEach((track) => track.stop());
+    playback?.pause();
+    if (playbackUrl) URL.revokeObjectURL(playbackUrl);
+  });
   onMount(() => {
     const openFromCell = (event: Event) => {
       const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt;
@@ -27,8 +34,8 @@
     return () => window.removeEventListener('larry:open', openFromCell);
   });
 
-  async function send() {
-    const question = draft.trim();
+  async function send(questionOverride?: string, speakReply = false) {
+    const question = (questionOverride ?? draft).trim();
     const dashboard = $reportState.dashboard;
     if (!question || !dashboard || sending) return;
     open = true;
@@ -48,6 +55,7 @@
           detail: { sources: reply.sources, text: reply.answer }
         })
       );
+      if (speakReply) await playReply(dashboard.report.run_id, reply.answer);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : 'Larry could not answer.';
     } finally {
@@ -55,47 +63,86 @@
     }
   }
 
-  async function toggleVoice() {
+  function resetPlayback() {
+    playback?.pause();
+    playback = null;
+    if (playbackUrl) URL.revokeObjectURL(playbackUrl);
+    playbackUrl = null;
+    if (voiceStatus === 'speaking') voiceStatus = 'idle';
+  }
+
+  async function playReply(runId: string, text: string) {
+    resetPlayback();
+    voiceStatus = 'speaking';
+    try {
+      const blob = await speakVoice(runId, text);
+      playbackUrl = URL.createObjectURL(blob);
+      playback = new Audio(playbackUrl);
+      playback.onended = resetPlayback;
+      playback.onerror = resetPlayback;
+      await playback.play();
+    } catch (cause) {
+      resetPlayback();
+      throw cause;
+    }
+  }
+
+  function stopMediaStream() {
+    mediaStream?.getTracks().forEach((track) => track.stop());
+    mediaStream = null;
+    recorder = null;
+  }
+
+  async function processRecording(chunks: BlobPart[], mediaType: string) {
     const dashboard = $reportState.dashboard;
-    if (conversation) {
-      await conversation.endSession();
-      conversation = null;
+    stopMediaStream();
+    if (!dashboard || !chunks.length) {
       voiceStatus = 'idle';
       return;
     }
+    voiceStatus = 'transcribing';
+    try {
+      const transcript = await transcribeVoice(
+        dashboard.report.run_id,
+        new Blob(chunks, { type: mediaType || 'audio/webm' })
+      );
+      draft = transcript;
+      await send(transcript, true);
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : 'Larry could not transcribe that recording.';
+    } finally {
+      if (!playback) voiceStatus = 'idle';
+    }
+  }
+
+  async function toggleVoice() {
+    const dashboard = $reportState.dashboard;
+    if (voiceStatus === 'recording' && recorder) {
+      recorder.stop();
+      return;
+    }
+    if (voiceStatus === 'speaking') {
+      resetPlayback();
+      return;
+    }
     if (!dashboard || voiceStatus !== 'idle') return;
-    voiceStatus = 'connecting';
     error = null;
     try {
-      const { Conversation } = await import('@elevenlabs/client');
-      const config = await createVoiceSession(dashboard.report.run_id);
-      conversation = await Conversation.startSession({
-        signedUrl: config.signed_url,
-        dynamicVariables: config.dynamic_variables,
-        onConnect: () => (voiceStatus = 'listening'),
-        onDisconnect: () => {
-          voiceStatus = 'idle';
-          conversation = null;
-        },
-        onModeChange: ({ mode }) => (voiceStatus = mode),
-        onMessage: ({ role, message }) => {
-          turns = [
-            ...turns,
-            { role: role === 'agent' ? 'assistant' : 'user', text: message }
-          ];
-          if (role === 'agent') {
-            window.dispatchEvent(
-              new CustomEvent('larry:highlight', { detail: { sources: [], text: message } })
-            );
-          }
-        },
-        onError: (message) => {
-          error = message;
-          voiceStatus = 'idle';
-        }
-      });
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((type) =>
+        MediaRecorder.isTypeSupported(type)
+      );
+      const chunks: BlobPart[] = [];
+      recorder = new MediaRecorder(mediaStream, mediaType ? { mimeType: mediaType } : undefined);
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) chunks.push(event.data);
+      };
+      recorder.onstop = () => processRecording(chunks, recorder?.mimeType || mediaType || 'audio/webm');
+      recorder.start();
+      voiceStatus = 'recording';
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : 'Voice could not start.';
+      stopMediaStream();
+      error = cause instanceof Error ? cause.message : 'Microphone access could not start.';
       voiceStatus = 'idle';
     }
   }
@@ -113,21 +160,6 @@
         <p>Answers are grounded in the imported workbook.</p>
       </div>
       <div class="panel-actions">
-        <button
-          class="voice"
-          class:active={voiceStatus !== 'idle'}
-          onclick={toggleVoice}
-          disabled={!$reportState.dashboard || voiceStatus === 'connecting'}
-          aria-label={voiceStatus === 'idle' ? 'Start voice conversation' : 'Stop voice conversation'}
-        >
-          <span class="voice-orb" aria-hidden="true">
-            <i></i><i></i><i></i><i></i>
-          </span>
-          <span class="voice-copy">
-            <strong>{voiceStatus === 'idle' ? 'Talk' : voiceStatus === 'connecting' ? 'Connecting' : voiceStatus}</strong>
-            <small>ElevenLabs</small>
-          </span>
-        </button>
         <button
           class="expand"
           onclick={() => (full = !full)}
@@ -174,6 +206,18 @@
           }
         }}
       ></textarea>
+      <button
+        class="voice"
+        class:active={voiceStatus !== 'idle'}
+        type="button"
+        onclick={toggleVoice}
+        disabled={!$reportState.dashboard || voiceStatus === 'transcribing'}
+        aria-label={voiceStatus === 'idle' ? 'Record a question for Larry' : voiceStatus === 'recording' || voiceStatus === 'speaking' ? 'Stop voice' : 'Transcribing voice'}
+        title={voiceStatus === 'idle' ? 'Talk with Larry' : voiceStatus === 'recording' ? 'Stop and send' : voiceStatus}
+      >
+        <span class="voice-orb" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="voice-copy">{voiceStatus === 'idle' ? 'Talk' : voiceStatus === 'recording' ? 'Stop' : voiceStatus}</span>
+      </button>
       <button class="send" type="submit" disabled={!draft.trim() || sending || !$reportState.dashboard}>Send</button>
     </form>
 </aside>
@@ -323,21 +367,9 @@
   .voice.active .voice-orb i:nth-child(4) { animation-delay: -0.12s; }
 
   .voice-copy {
-    display: grid;
-    line-height: 1.05;
-    text-align: left;
-  }
-
-  .voice-copy strong {
     font-size: 0.78rem;
     font-weight: 650;
     text-transform: capitalize;
-  }
-
-  .voice-copy small {
-    color: #bdbdbd;
-    font-size: 0.62rem;
-    letter-spacing: 0.01em;
   }
 
   .expand {
@@ -416,7 +448,7 @@
 
   form {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     gap: 0.6rem;
     border-top: 1px solid var(--line);
     background: var(--white);

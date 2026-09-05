@@ -57,6 +57,25 @@
         </div>
       </section>
     {/if}
+
+    {#if report.observability}
+      {@const prism = report.observability}
+      <section class="prism-card" aria-label="PRISM observability snapshot">
+        <div class="prism-head">
+          <div><p class="eyebrow">{prism.provider} observability</p><h2>{prism.agent_name}</h2></div>
+          <span>{prism.model}</span>
+        </div>
+        <div class="prism-grid">
+          <div><span>Live traces</span><strong>{prism.live_traces}</strong></div>
+          <div><span>Active agents</span><strong>{prism.active_agents}</strong></div>
+          <div><span>Average latency</span><strong>{prism.average_latency_seconds}s</strong></div>
+          <div><span>Guardrail blocks</span><strong>{prism.guardrail_blocks}</strong></div>
+          <div><span>Compliance</span><strong>{prism.compliance_score_pct}%</strong></div>
+          <div><span>Cost today</span><strong>${prism.cost_today.toFixed(3)}</strong></div>
+        </div>
+        <p class="snapshot-note">Snapshot captured {prism.captured_at}. Financial figures above remain sourced only from the imported CSV.</p>
+      </section>
+    {/if}
   </div>
 {/if}
 
@@ -76,9 +95,22 @@
   .signals { border-top: 1px solid var(--line); }
   .signals a { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); padding: 0.8rem 0; }
   .signals strong { font-family: var(--font-mono); }
+  .prism-card { margin-top: 2.75rem; border: 1px solid var(--line); border-radius: 0.7rem; background: var(--white); overflow: hidden; }
+  .prism-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); padding: 1rem 1.1rem; }
+  .prism-head h2, .prism-head p { margin: 0; }
+  .prism-head > span { border: 1px solid var(--line); border-radius: 999px; padding: 0.3rem 0.65rem; color: var(--muted); font-family: var(--font-mono); font-size: 0.75rem; }
+  .prism-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .prism-grid div { display: grid; gap: 0.25rem; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 1rem 1.1rem; }
+  .prism-grid div:nth-child(3n) { border-right: 0; }
+  .prism-grid span, .snapshot-note { color: var(--muted); }
+  .prism-grid strong { font-family: var(--font-mono); font-size: 1.1rem; }
+  .snapshot-note { margin: 0; padding: 0.75rem 1.1rem; font-size: 0.78rem; }
   @media (max-width: 47.99rem) {
     .today-page { padding-top: 1.4rem; }
     .glance-grid { grid-template-columns: 1fr; }
     .glance-grid div { border-right: 0; border-bottom: 1px solid var(--line); }
+    .prism-grid { grid-template-columns: 1fr 1fr; }
+    .prism-grid div, .prism-grid div:nth-child(3n) { border-right: 1px solid var(--line); }
+    .prism-grid div:nth-child(2n) { border-right: 0; }
   }
 </style>
