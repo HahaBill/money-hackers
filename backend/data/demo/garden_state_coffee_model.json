@@ -6,16 +6,13 @@
   "confidence_regime": "workbook_actuals",
   "source_workbook": "CoffeeshopFinancials.csv",
   "observability": {
-    "provider": "PRISM",
     "captured_at": "2026-09-05",
     "live_traces": 7,
     "active_agents": 1,
     "average_latency_seconds": 7.5,
     "guardrail_blocks": 0,
     "compliance_score_pct": 30.0,
-    "cost_today": 0.088,
-    "agent_name": "money-talks",
-    "model": "gpt-6-astra"
+    "cost_today": 0.088
   },
   "headline": {
     "metric": "adjusted_ebitda",

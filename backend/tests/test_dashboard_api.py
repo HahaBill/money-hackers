@@ -74,13 +74,19 @@ def test_runs_ignores_memory_and_invalid_json(monkeypatch, tmp_path):
 
 
 def test_csv_demo_is_available_and_reconciles():
-    dashboard = TestClient(server_tools.app).get("/dashboard/garden_state_coffee_model").json()
+    client = TestClient(server_tools.app)
+    dashboard = client.get("/dashboard/garden_state_coffee_model").json()
     assert dashboard["report"]["period"] == "2025-08"
     assert dashboard["report"]["source_workbook"] == "CoffeeshopFinancials.csv"
     assert dashboard["attribution_total"] == -13802.0
     assert sum(item["dollars"] for item in dashboard["attributions"]) == -13802.0
     assert dashboard["sheet_rows"][0]["current"] == 116640.0
     assert dashboard["sheet_rows"][-1]["current"] == -38681.0
+    public_activity = dashboard["report"]["observability"]
+    assert "provider" not in public_activity
+    assert "model" not in public_activity
+    assert "agent_name" not in public_activity
+    assert "provider" not in client.get("/runs/garden_state_coffee_model").json()["observability"]
 
 
 def test_dashboard_falls_back_to_report_findings(monkeypatch, tmp_path):

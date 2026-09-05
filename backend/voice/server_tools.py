@@ -125,7 +125,20 @@ def list_runs():
 
 @app.get("/runs/{run_id}")
 def get_run(run_id: str):
-    return _load(run_id)
+    return _public_report(_load(run_id))
+
+
+def _public_report(report: dict) -> dict:
+    """Remove internal implementation metadata from browser-facing run payloads."""
+    public_report = dict(report)
+    observability = report.get("observability")
+    if isinstance(observability, dict):
+        public_report["observability"] = {
+            key: value
+            for key, value in observability.items()
+            if key not in {"provider", "model", "agent_name"}
+        }
+    return public_report
 
 
 def _decode_graph_row(row: dict) -> dict:
@@ -340,7 +353,7 @@ def get_dashboard(run_id: str):
         "business": {
             "name": os.environ.get("BUSINESS_NAME") or "Garden State Coffee",
         },
-        "report": report,
+        "report": _public_report(report),
         "metrics": metrics,
         "attributions": attributions,
         "attribution_summary": attribution_summary,

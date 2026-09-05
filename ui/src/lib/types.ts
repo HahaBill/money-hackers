@@ -112,7 +112,6 @@ export type RunReport = {
   prevalidated_summary?: string;
   workbook_rows?: SheetRow[];
   observability?: {
-    provider: string;
     captured_at: string;
     live_traces: number;
     active_agents: number;
@@ -120,8 +119,6 @@ export type RunReport = {
     guardrail_blocks: number;
     compliance_score_pct: number;
     cost_today: number;
-    agent_name: string;
-    model: string;
   };
 };
 
