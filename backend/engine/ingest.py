@@ -68,6 +68,11 @@ def ingest_transactions(
             if row_basis not in BASES:
                 raise IngestError(f"row {i}: invalid basis {row_basis!r}")
             row_period = period or raw.get("period") or day.strftime("%Y-%m")
+            tags = [
+                item.strip()
+                for item in re.split(r"[;|]", raw.get("tags") or "")
+                if item.strip()
+            ]
             rows.append(
                 Transaction(
                     txn_id=txn_id,
@@ -89,6 +94,7 @@ def ingest_transactions(
                     counterparty_id=normalize_counterparty(counterparty),
                     basis=row_basis,  # type: ignore[arg-type]
                     source_file=path.name,
+                    tags=tags,
                 )
             )
     _mark_recurring(rows)
@@ -96,23 +102,19 @@ def ingest_transactions(
 
 
 def _mark_recurring(rows: list[Transaction]) -> None:
-    by_key: dict[str, list[Transaction]] = {}
+    by_key: dict[tuple[str, str], list[Transaction]] = {}
     for txn in rows:
         if not txn.counterparty_id or txn.counterparty_id == "unknown":
             continue
-        key = txn.counterparty_id
+        key = (txn.counterparty_id, txn.category.casefold())
         by_key.setdefault(key, []).append(txn)
     for key, group in by_key.items():
-        if len(group) < 2:
+        if len({txn.period for txn in group}) < 2:
             continue
-        amounts = [abs(t.amount) for t in group]
-        mid = amounts[0]
-        close = [t for t in group if mid == 0 or abs(abs(t.amount) - mid) / mid <= 0.03]
-        if len(close) >= 2:
-            rk = f"rec:{key}:{mid}"
-            for txn in close:
-                txn.is_recurring = True
-                txn.recurrence_key = rk
+        rk = f"rec:{key[0]}:{key[1]}"
+        for txn in group:
+            txn.is_recurring = True
+            txn.recurrence_key = rk
 
 
 def ingest_summary(path: Path, *, period: str | None = None) -> PeriodSummary:

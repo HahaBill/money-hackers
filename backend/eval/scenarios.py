@@ -256,13 +256,83 @@ def scenario_i() -> Scenario:
     )
 
 
+def scenario_g() -> Scenario:
+    prior = _base()
+    curr = prior.copy()
+    curr.unit_cost["milk"] *= 1.08
+    return Scenario(
+        "G",
+        "2026-08",
+        "2026-07",
+        prior,
+        curr,
+        {},
+        history_n=0,
+        truth={"confidence_regime": "prior_dominant"},
+    )
+
+
+def scenario_j() -> Scenario:
+    prior = _base()
+    curr = prior.copy()
+    curr.unit_cost["milk"] *= 1.12
+    return Scenario(
+        "J",
+        "2026-08",
+        "2026-07",
+        prior,
+        curr,
+        {
+            "unit_cost.milk": [
+                {
+                    "label": "order_quantity_down",
+                    "tier": 1,
+                    "support": "strong_for",
+                    "classes": ["order_tier"],
+                    "extract": "order quantity fell while unit cost stepped up",
+                },
+                {
+                    "label": "market_flat",
+                    "tier": 1,
+                    "support": "strong_against",
+                    "classes": ["market_inflation"],
+                    "extract": "peer supplier prices were flat",
+                },
+            ]
+        },
+        truth={"leading_class": "order_tier", "question_class": "order_tier"},
+    )
+
+
+def scenario_n() -> Scenario:
+    prior = _base()
+    prior.traffic = 10_000.0
+    prior.conversion = 0.30
+    prior.volume = 0.0
+    curr = prior.copy()
+    curr.traffic = 11_500.0
+    curr.conversion = 3_330.0 / curr.traffic
+    return Scenario(
+        "N",
+        "2026-08",
+        "2026-07",
+        prior,
+        curr,
+        {},
+        truth={"relationship": "traffic_revenue_gap", "negative_leaf": "conversion"},
+    )
+
+
 REGISTRY = {
     "A": scenario_a,
     "B": scenario_b,
     "C": scenario_c,
     "D": scenario_d,
     "E": scenario_e,
+    "G": scenario_g,
     "I": scenario_i,
+    "J": scenario_j,
+    "N": scenario_n,
 }
 
 

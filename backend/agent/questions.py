@@ -88,3 +88,20 @@ def select(candidates: list[dict[str, Any]], limit: int = 3) -> list[dict[str, A
         if len(selected) == limit:
             break
     return selected
+
+
+def support_for_option(option: str) -> str:
+    """Encode closed owner answers into the constrained belief vocabulary."""
+    normalized = option.casefold().strip()
+    if normalized in {"not sure", "unknown"}:
+        return "neutral"
+    if normalized in {
+        "no",
+        "none",
+        "unchanged",
+        "no change",
+        "no switch",
+        "no menu change",
+    }:
+        return "strong_against"
+    return "strong_for"

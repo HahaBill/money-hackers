@@ -1,6 +1,8 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
+import pytest
+
 from engine.leakage import scan
 from engine.model import Transaction
 
@@ -29,7 +31,8 @@ def txn(tid: str, when: str, amount: str, *, period: str, unit: str | None = Non
     )
 
 
-def test_duplicate_payment_is_flagged_with_counter_explanation():
+@pytest.mark.regression
+def test_k_duplicate_payment_is_flagged_with_counter_explanation():
     rows = [
         txn("a", "2026-08-02", "-500", period="2026-08"),
         txn("b", "2026-08-04", "-500", period="2026-08"),
@@ -48,3 +51,18 @@ def test_supplier_unit_cost_outlier_uses_own_history():
     current = txn("c", "2026-08-02", "-130", period="2026-08", unit="13")
     flags = scan([*history, current], period="2026-08")
     assert any(flag.rule == "unit_cost_outlier" for flag in flags)
+
+
+@pytest.mark.regression
+def test_f_supplier_gap_is_market_unexplained_and_non_accusatory():
+    history = [txn("h", "2026-07-02", "-100", period="2026-07", unit="10")]
+    current = txn("c", "2026-08-02", "-122", period="2026-08", unit="12.2")
+    flags = scan(
+        [*history, current],
+        period="2026-08",
+        market_unit_cost_changes={"milk": 0.07},
+    )
+    flag = next(item for item in flags if item.rule == "supplier_market_gap")
+    assert round(flag.gap_dollars, 2) == 15.0
+    combined = f"{flag.detail} {flag.counter_explanation}".casefold()
+    assert not any(word in combined for word in ("fraud", "scam", "cheat", "overcharge"))

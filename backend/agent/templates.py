@@ -36,7 +36,7 @@ TEMPLATES: list[Template] = [
     Template("electricity", "equipment", "equipment inefficiency or fault", 0.30, "elevation persists after weather normalizes", None, True),
     Template("electricity", "tariff", "rate change", 0.20, "kWh flat, $ up", "market_conditions"),
     Template("labor", "hours", "more hours scheduled", 0.45, "hours metric; opening hours", None, True),
-    Template("labor", "rate", "wage rate change", 0.35, "hours flat, $ up", "market_conditions"),
+    Template("labor", "rate", "wage rate change", 0.35, "hours flat, $ up", "regulatory"),
     Template("usage_efficiency", "waste", "portioning / spoilage", 0.50, "input qty per drink up", None, True),
 ]
 

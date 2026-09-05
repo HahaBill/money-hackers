@@ -1,0 +1,28 @@
+scenario: B_product_mix
+start_period: 2026-03
+months: 6
+base:
+  daily_orders: {mean: 40, sd: 5}
+  products:
+    espresso:   {price: 3.20, unit_cost: 0.45, share: 0.18}
+    latte:      {price: 5.00, unit_cost: 1.20, share: 0.26}
+    iced_latte: {price: 5.50, unit_cost: 1.85, share: 0.16}
+    cold_brew:  {price: 4.80, unit_cost: 1.60, share: 0.09}
+    drip:       {price: 2.80, unit_cost: 0.35, share: 0.21}
+    pastry:     {price: 3.75, unit_cost: 1.70, share: 0.10}
+  inputs:
+    milk: {unit_cost: 4.10, suppliers: [Nordic Dairy Co, Oat Collective]}
+    beans: {unit_cost: 18.50, suppliers: [Peak Bean Roasters]}
+  opex: {labor: 0.30, rent: 3600, electricity: {base: 900}, other: 0.07}
+  noise: {order_sd: 0.06, cost_sd: 0.02}
+inject:
+  - month: 6
+    leaf: mix
+    change: {iced_latte: 0.06, cold_brew: 0.03, drip: -0.05, latte: -0.04}
+  - month: 6
+    leaf: volume
+    change: 0.11
+distractors:
+  - month: 6
+    type: weather
+    text: unusually hot

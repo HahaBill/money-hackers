@@ -22,8 +22,8 @@ def node_id(
 ) -> str:
     address = {"type": type_, "period": period, "label": label, "inputs": inputs}
     if content is not None:
-        # Raw data has no upstream node id, so its own content must participate
-        # in addressing. Downstream ids then change naturally.
+        # Content prevents same-label siblings from colliding and ensures a
+        # corrected value produces a new address.
         address["content"] = content
     payload = json.dumps(
         address,
@@ -167,7 +167,9 @@ class GraphStore:
         derives_from: list[str] | None = None,
     ) -> Node:
         inputs = inputs or []
-        nid = node_id(type, period, label, inputs, content=value if type == "data" else None)
+        # Value participates in every address. Otherwise two flags with the
+        # same label and parents overwrite one another inside a period.
+        nid = node_id(type, period, label, inputs, content=value)
         node = Node(
             id=nid,
             type=type,

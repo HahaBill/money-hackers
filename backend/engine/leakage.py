@@ -120,6 +120,45 @@ def _new_vendor_flags(current: list[Transaction], history: list[Transaction]) ->
     ]
 
 
+def _supplier_market_gap_flags(
+    current: list[Transaction],
+    history: list[Transaction],
+    market_unit_cost_changes: dict[str, float],
+) -> list[LeakageFlag]:
+    prior_costs: dict[tuple[str, str], list[float]] = {}
+    for txn in history:
+        value = _unit_cost(txn)
+        if value is not None:
+            prior_costs.setdefault((txn.counterparty_id, txn.category), []).append(value)
+    flags = []
+    for txn in current:
+        value = _unit_cost(txn)
+        history_values = prior_costs.get((txn.counterparty_id, txn.category), [])
+        market_change = market_unit_cost_changes.get(txn.category)
+        if value is None or not history_values or market_change is None:
+            continue
+        prior = statistics.median(history_values)
+        if prior <= 0:
+            continue
+        supplier_change = value / prior - 1.0
+        excess = supplier_change - market_change
+        if excess < 0.05:
+            continue
+        quantity = abs(float(txn.quantity or 1))
+        gap = max(0.0, value - prior * (1.0 + market_change)) * quantity
+        flags.append(
+            LeakageFlag(
+                rule="supplier_market_gap",
+                entity=txn.counterparty or txn.counterparty_id,
+                gap_dollars=gap,
+                evidence_rows=[txn.txn_id],
+                counter_explanation="The difference may reflect a product grade, delivery term, pack size, or lost volume tier.",
+                detail="Supplier unit cost increased at least five percentage points beyond the market benchmark.",
+            )
+        )
+    return flags
+
+
 def _missing_recurring_flags(current: list[Transaction], history: list[Transaction]) -> list[LeakageFlag]:
     current_keys = {txn.recurrence_key for txn in current if txn.recurrence_key}
     historical: dict[str, list[Transaction]] = {}
@@ -127,9 +166,19 @@ def _missing_recurring_flags(current: list[Transaction], history: list[Transacti
         if txn.recurrence_key:
             historical.setdefault(txn.recurrence_key, []).append(txn)
     flags = []
+    current_period = current[0].period if current else ""
+
+    def period_index(value: str) -> int:
+        year, month = (int(part) for part in value.split("-", 1))
+        return year * 12 + month
+
     for key, txns in historical.items():
         periods = {txn.period for txn in txns}
-        if key in current_keys or len(periods) < 2:
+        if key in current_keys or len(periods) < 2 or not current_period:
+            continue
+        expected = period_index(current_period)
+        prior_indices = {period_index(period) for period in periods}
+        if not {expected - 1, expected - 2}.issubset(prior_indices):
             continue
         latest = max(txns, key=lambda txn: txn.date)
         flags.append(
@@ -149,6 +198,7 @@ def scan(
     transactions: Iterable[Transaction],
     *,
     period: str,
+    market_unit_cost_changes: dict[str, float] | None = None,
 ) -> list[LeakageFlag]:
     rows = list(transactions)
     current = [txn for txn in rows if txn.period == period]
@@ -156,6 +206,7 @@ def scan(
     return [
         *_duplicate_flags(current),
         *_unit_cost_flags(current, history),
+        *_supplier_market_gap_flags(current, history, market_unit_cost_changes or {}),
         *_new_vendor_flags(current, history),
         *_missing_recurring_flags(current, history),
     ]

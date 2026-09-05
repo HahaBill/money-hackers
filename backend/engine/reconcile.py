@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import timedelta
+from dataclasses import dataclass, field
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -28,6 +28,7 @@ class ReconcileResult:
     status: str  # passed | blocked
     checks: list[CheckResult]
     message: str | None = None
+    analysis_rows: list[Transaction] = field(default_factory=list)
 
 
 def load_leaf_map(path: Path) -> dict[str, str]:
@@ -48,6 +49,48 @@ def _tol(amount: Decimal, pct: Decimal) -> Decimal:
     return max(TOL_ABS, abs(amount) * pct)
 
 
+def _tagged_period(txn: Transaction, basis: str) -> str | None:
+    prefix = f"{basis}_period:"
+    return next((tag[len(prefix) :] for tag in txn.tags if tag.startswith(prefix)), None)
+
+
+def _near_period_boundary(txn: Transaction, tagged_period: str, days: int = 3) -> bool:
+    year, month = (int(part) for part in tagged_period.split("-", 1))
+    start = date(year, month, 1)
+    end = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    return min(abs((txn.date - start).days), abs((txn.date - end).days)) <= days
+
+
+def _basis_adjusted_rows(
+    current: list[Transaction],
+    adjacent: list[Transaction] | None,
+    *,
+    period: str,
+    target_basis: str,
+) -> tuple[list[Transaction], int, bool]:
+    if not adjacent:
+        return list(current), 0, False
+    deduped = {txn.txn_id: txn for txn in adjacent}
+    explicit = [txn for txn in deduped.values() if _tagged_period(txn, target_basis)]
+    if not explicit or any(
+        not _near_period_boundary(txn, _tagged_period(txn, target_basis) or period)
+        for txn in explicit
+    ):
+        return list(current), 0, False
+    effective = []
+    adjusted = 0
+    for txn in deduped.values():
+        target_period = _tagged_period(txn, target_basis)
+        include = target_period == period if target_period else txn.period == period
+        if target_period and target_period != txn.period:
+            if "basis_adjusted" not in txn.tags:
+                txn.tags.append("basis_adjusted")
+            adjusted += 1
+        if include:
+            effective.append(txn)
+    return effective, adjusted, adjusted > 0
+
+
 def reconcile(
     txns: list[Transaction],
     summary: PeriodSummary,
@@ -56,10 +99,19 @@ def reconcile(
     period: str,
     run_id: str,
     category_map: dict[str, str],
+    adjacent_txns: list[Transaction] | None = None,
 ) -> ReconcileResult:
     checks: list[CheckResult] = []
+    source_bases = {txn.basis for txn in txns}
+    basis_matches_before = source_bases == {summary.basis}
+    effective_txns, adjusted_count, basis_adjusted = _basis_adjusted_rows(
+        txns,
+        adjacent_txns if not basis_matches_before else None,
+        period=period,
+        target_basis=summary.basis,
+    )
 
-    ids = [t.txn_id for t in txns]
+    ids = [t.txn_id for t in effective_txns]
     dup = len(ids) != len(set(ids))
     checks.append(
         CheckResult(
@@ -70,7 +122,12 @@ def reconcile(
         )
     )
 
-    outside = [t for t in txns if t.date.strftime("%Y-%m") != period or t.period != period]
+    outside = [
+        txn
+        for txn in effective_txns
+        if (txn.period != period or txn.date.strftime("%Y-%m") != period)
+        and _tagged_period(txn, summary.basis) != period
+    ]
     checks.append(
         CheckResult(
             "period_boundaries",
@@ -82,7 +139,7 @@ def reconcile(
 
     unmapped = [
         txn.category
-        for txn in txns
+        for txn in effective_txns
         if txn.txn_type in {"cogs", "opex"}
         and map_category(txn.category, category_map) is None
     ]
@@ -95,7 +152,7 @@ def reconcile(
         )
     )
 
-    rev = sum((t.amount for t in txns if t.txn_type == "revenue"), Decimal("0"))
+    rev = sum((t.amount for t in effective_txns if t.txn_type == "revenue"), Decimal("0"))
     gap = abs(rev - summary.revenue)
     checks.append(
         CheckResult(
@@ -107,7 +164,7 @@ def reconcile(
     )
 
     expense_total = abs(
-        sum((t.amount for t in txns if t.txn_type in {"cogs", "opex"}), Decimal("0"))
+        sum((t.amount for t in effective_txns if t.txn_type in {"cogs", "opex"}), Decimal("0"))
     )
     expense_gap = abs(expense_total - abs(summary.expenses))
     checks.append(
@@ -144,7 +201,7 @@ def reconcile(
             sum(
                 (
                     txn.amount
-                    for txn in txns
+                    for txn in effective_txns
                     if txn.txn_type in {"cogs", "opex"}
                     and map_category(txn.category, category_map) == leaf
                 ),
@@ -162,7 +219,7 @@ def reconcile(
         )
 
     suspected = []
-    ordered = sorted(txns, key=lambda txn: txn.date)
+    ordered = sorted(effective_txns, key=lambda txn: txn.date)
     for i, left in enumerate(ordered):
         for right in ordered[i + 1 :]:
             if right.date - left.date > timedelta(days=1):
@@ -182,7 +239,7 @@ def reconcile(
     )
 
     quantity_mismatches = []
-    for txn in txns:
+    for txn in effective_txns:
         if txn.quantity is None or txn.unit_price is None:
             continue
         expected_amount = abs(txn.quantity * txn.unit_price)
@@ -198,16 +255,22 @@ def reconcile(
         )
     )
 
-    txn_bases = {txn.basis for txn in txns}
-    basis_matches = txn_bases == {summary.basis}
+    txn_bases = {txn.basis for txn in effective_txns}
+    basis_matches = txn_bases == {summary.basis} or basis_adjusted
     checks.append(
         CheckResult(
             "cash_accrual_basis",
             "pass" if basis_matches else "block",
             "bases match"
-            if basis_matches
-            else "basis mismatch requires adjacent-period rows for cutoff-window adjustment",
-            {"transaction_bases": sorted(txn_bases), "summary_basis": summary.basis},
+            if txn_bases == {summary.basis}
+            else f"cutoff-window adjustment applied to {adjusted_count} rows"
+            if basis_adjusted
+            else "basis mismatch requires tagged adjacent-period rows for cutoff-window adjustment",
+            {
+                "transaction_bases": sorted(txn_bases),
+                "summary_basis": summary.basis,
+                "basis_adjusted_rows": adjusted_count,
+            },
         )
     )
 
@@ -229,5 +292,10 @@ def reconcile(
             f"ANALYSIS_BLOCKED  period={period}\n"
             f"{first.name}: {first.detail}"
         )
-        return ReconcileResult(status="blocked", checks=checks, message=msg)
-    return ReconcileResult(status="passed", checks=checks)
+        return ReconcileResult(
+            status="blocked",
+            checks=checks,
+            message=msg,
+            analysis_rows=effective_txns,
+        )
+    return ReconcileResult(status="passed", checks=checks, analysis_rows=effective_txns)

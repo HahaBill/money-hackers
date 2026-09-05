@@ -73,19 +73,30 @@ def build_leaf_state(
         else:
             opex[leaf] += spend
 
+    implied_by_input = {
+        item: sum(
+            volume * mix.get(product, 0.0) * RECIPE[product].get(item, 0.0)
+            for product in PRODUCTS
+        )
+        for item in INPUTS
+    }
     unit_cost = dict(fallback.unit_cost) if fallback else {}
     for item in INPUTS:
         if input_qty.get(item):
             unit_cost[item] = input_spend[item] / input_qty[item]
-        elif item not in unit_cost:
+        elif item not in unit_cost and (input_spend.get(item) or implied_by_input[item]):
             raise StateBuildError(f"missing quantity history needed to calculate {item} unit cost")
+        elif item not in unit_cost:
+            # An input that was neither purchased nor recipe-required in the
+            # period is an inactive leaf, not a missing-data failure.
+            unit_cost[item] = 0.0
 
     # Purchased quantities and recipe-implied usage are kept separate. This
     # makes stock build/spoilage visible as usage efficiency instead of folding
     # it into unit price.
     usage_efficiency = {}
     for item in INPUTS:
-        implied = sum(volume * mix.get(product, 0.0) * RECIPE[product].get(item, 0.0) for product in PRODUCTS)
+        implied = implied_by_input[item]
         purchased = input_qty.get(item, 0.0)
         usage_efficiency[item] = purchased / implied if implied and purchased else 1.0
 

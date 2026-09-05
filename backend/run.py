@@ -11,6 +11,7 @@ from pathlib import Path
 
 from agent import llm
 from agent.memory import Memory
+from agent.tavily_tool import TavilyResearcher
 from engine.demo_states import cafe_current, cafe_prior
 from engine.ingest import ingest_operational_metrics, ingest_summary, ingest_transactions
 from engine.pipeline import analyze, persist
@@ -64,6 +65,16 @@ def main() -> int:
     )
     parser.add_argument("--llm", action="store_true", help="use OpenAI gpt-6-astra for classify/narrative")
     parser.add_argument("--no-llm", action="store_true")
+    parser.add_argument(
+        "--research",
+        action="store_true",
+        help="allow bounded Tavily searches for live hypotheses (requires --llm)",
+    )
+    parser.add_argument(
+        "--research-context",
+        type=Path,
+        help="JSON containing region/city/jurisdiction and optional supplier/menu domains",
+    )
     parser.add_argument("--memory", default=str(BACKEND_ROOT / "runs/memory.json"))
     args = parser.parse_args()
 
@@ -71,12 +82,24 @@ def main() -> int:
         parser.error("--run-id may contain only letters, numbers, dot, underscore, and dash")
     if args.llm and not llm.available():
         parser.error("--llm requires OPENAI_API_KEY in backend/.env or the environment")
+    if args.research and not args.llm:
+        parser.error("--research requires --llm so retrieved evidence can be classified")
+    researcher = TavilyResearcher() if args.research else None
+    if researcher and not researcher.available:
+        parser.error("--research requires TAVILY_API_KEY in backend/.env or the environment")
+    research_context = {}
+    if args.research_context:
+        research_context = json.loads(args.research_context.read_text())
+        if not isinstance(research_context, dict):
+            parser.error("--research-context must contain a JSON object")
     use_llm = args.llm and not args.no_llm
     (BACKEND_ROOT / "runs").mkdir(exist_ok=True)
     store = GraphStore(args.db)
     memory = Memory.load(Path(args.memory))
 
     data_payload = None
+    transactions_for_analysis = None
+    category_map_for_analysis = None
     if args.scenario:
         sc = _scenario(args.scenario)
         period, prior, curr = sc.period, sc.prior, sc.curr
@@ -92,6 +115,7 @@ def main() -> int:
         current_summary = ingest_summary(summaries_path, period=period)
         prior_summary = ingest_summary(summaries_path, period=prior_period)
         category_map = load_leaf_map(args.category_map)
+        category_map_for_analysis = category_map
         current_rows = [txn for txn in transactions if txn.period == period]
         prior_rows = [txn for txn in transactions if txn.period == prior_period]
         checks = [
@@ -102,6 +126,7 @@ def main() -> int:
                 period=prior_period,
                 run_id=args.run_id,
                 category_map=category_map,
+                adjacent_txns=transactions,
             ),
             reconcile(
                 current_rows,
@@ -110,6 +135,7 @@ def main() -> int:
                 period=period,
                 run_id=args.run_id,
                 category_map=category_map,
+                adjacent_txns=transactions,
             ),
         ]
         if any(result.status == "blocked" for result in checks):
@@ -118,6 +144,8 @@ def main() -> int:
             output.write_text(json.dumps(payload, indent=2))
             print(json.dumps(payload, indent=2))
             return 2
+        prior_rows = checks[0].analysis_rows
+        current_rows = checks[1].analysis_rows
         operational = ingest_operational_metrics(args.data / "operational_metrics.csv")
         prior = build_leaf_state(
             prior_rows,
@@ -137,6 +165,7 @@ def main() -> int:
             "summary_source": current_summary.source,
             "analysis_basis": current_summary.basis,
         }
+        transactions_for_analysis = transactions
     else:
         period, prior, curr = args.period, cafe_prior(), cafe_current()
         facts, entities, history_n = {}, {}, 4
@@ -153,6 +182,10 @@ def main() -> int:
         history_n=history_n,
         use_llm=use_llm,
         data_payload=data_payload,
+        transactions=transactions_for_analysis,
+        category_map=category_map_for_analysis,
+        researcher=researcher,
+        research_context=research_context,
     )
     persist(result, BACKEND_ROOT / "runs" / f"{args.run_id}.json")
     memory.save(Path(args.memory))
