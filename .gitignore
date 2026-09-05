@@ -9,4 +9,9 @@ __pycache__/
 data/generated/
 runs/
 .DS_Store
+node_modules/
+.svelte-kit/
+ui/build/
+ui/.vite/
 backend/voice/deployment.json
+.gide-models/
