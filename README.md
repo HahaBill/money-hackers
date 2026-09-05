@@ -12,6 +12,7 @@
 [![Voice](https://img.shields.io/badge/Voice-ElevenLabs-356AE6?style=for-the-badge&labelColor=242424)](https://elevenlabs.io)
 [![Tavily](https://img.shields.io/badge/Research-Tavily-356AE6?style=for-the-badge&labelColor=242424)](https://tavily.com)
 [![PRISM](https://img.shields.io/badge/Observe-PRISM-356AE6?style=for-the-badge&labelColor=242424)](https://prism-api-prod.up.railway.app)
+[![GIDE](https://img.shields.io/badge/PRD-GIDE-356AE6?style=for-the-badge&labelColor=242424)](https://gide.dev)
 
 <br />
 
@@ -238,7 +239,7 @@ backend/
 ├── data/                    Category map + scenario YAML
 └── tests/
 ui/                        SvelteKit workbook (Larry desktop UI)
-docs/PRD.md                Full product + engine spec
+docs/PRD.md                Full product + engine spec (analyzed and built in GIDE)
 AGENTS.md                  PRISM wiring rule for new model entry points
 ```
 
@@ -253,8 +254,9 @@ AGENTS.md                  PRISM wiring rule for new model entry points
 | Voice | ElevenLabs | Dock STT/TTS plus optional Agents Platform session; sequences validated text only |
 | Research | Tavily | At most four template-bound searches per `--research` run |
 | Observe | PRISM (`prismtrace-sdk`) | Traces every model, tool, and graph entry point (`PRISMTRACE_*`) |
+| Spec | GIDE | PRD analysis and the build/test/refactor loop that produced [`docs/PRD.md`](./docs/PRD.md) |
 
-Every new agent, chain, graph, tool, retriever, or model entry point must be wired to PRISM before merge — unwired code is invisible. See [`AGENTS.md`](./AGENTS.md).
+GIDE is how the PRD was analyzed and how the engine was implemented against it. Every new agent, chain, graph, tool, retriever, or model entry point must be wired to PRISM before merge — unwired code is invisible. See [`AGENTS.md`](./AGENTS.md).
 
 ## Human setup checklist
 
