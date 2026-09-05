@@ -17,7 +17,7 @@ from engine.ingest import ingest_operational_metrics, ingest_summary, ingest_tra
 from engine.pipeline import analyze, persist
 from engine.reconcile import load_leaf_map, reconcile
 from engine.state_builder import build_leaf_state
-from prism_setup import steps_from_findings, submit_run
+from prism_setup import steps_from_findings, submit_run, trace_session
 from rcg.store import GraphStore
 
 BACKEND_ROOT = Path(__file__).resolve().parent
@@ -170,23 +170,24 @@ def main() -> int:
         period, prior, curr = args.period, cafe_prior(), cafe_current()
         facts, entities, history_n = {}, {}, 4
 
-    result = analyze(
-        period=period,
-        run_id=args.run_id,
-        prior=prior,
-        curr=curr,
-        store=store,
-        memory=memory,
-        facts_by_leaf=facts,
-        entities=entities,
-        history_n=history_n,
-        use_llm=use_llm,
-        data_payload=data_payload,
-        transactions=transactions_for_analysis,
-        category_map=category_map_for_analysis,
-        researcher=researcher,
-        research_context=research_context,
-    )
+    with trace_session(args.run_id):
+        result = analyze(
+            period=period,
+            run_id=args.run_id,
+            prior=prior,
+            curr=curr,
+            store=store,
+            memory=memory,
+            facts_by_leaf=facts,
+            entities=entities,
+            history_n=history_n,
+            use_llm=use_llm,
+            data_payload=data_payload,
+            transactions=transactions_for_analysis,
+            category_map=category_map_for_analysis,
+            researcher=researcher,
+            research_context=research_context,
+        )
     persist(result, BACKEND_ROOT / "runs" / f"{args.run_id}.json")
     memory.save(Path(args.memory))
     submit_run(

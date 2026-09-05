@@ -1,14 +1,16 @@
 {
-  "goals": [],
+  "goals": [
+    "analyze @PRD"
+  ],
   "decisions": [
     "instead of being decoration."
   ],
   "preferences": [
-    "Do not write any files.",
     "never computes.",
+    "Do not write any files.",
     "don't know rather than guessing."
   ],
   "files": [],
-  "updatedAt": 1788626061966,
-  "sessions": 3
+  "updatedAt": 1788634133423,
+  "sessions": 4
 }

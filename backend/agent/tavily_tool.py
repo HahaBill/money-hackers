@@ -8,9 +8,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import date
+import json
+from time import perf_counter
 from urllib.parse import urlparse
 
 import httpx
+from prism_setup import emit_trace
 
 ENDPOINT = "https://api.tavily.com/search"
 MAX_CALLS = 4
@@ -138,6 +141,7 @@ class TavilyResearcher:
             raise ResearchError("Tavily per-run budget exhausted")
         request = build_request(template, context)
         self.calls += 1
+        started = perf_counter()
         try:
             response = httpx.post(
                 ENDPOINT,
@@ -147,10 +151,19 @@ class TavilyResearcher:
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
+            emit_trace(
+                model="tool:tavily.search",
+                input_messages=[{"role": "tool_request", "content": json.dumps(request)}],
+                output_message="",
+                latency_ms=int((perf_counter() - started) * 1000),
+                event_type="tool_call",
+                status="error",
+                metadata={"tool_name": "tavily.search", "error_type": type(exc).__name__},
+            )
             raise ResearchError(f"Tavily search failed: {exc}") from exc
         payload = response.json()
         supplier_domains = set(context.get("supplier_domains") or [])
-        return [
+        results = [
             SearchResult(
                 url=str(item.get("url") or ""),
                 title=str(item.get("title") or ""),
@@ -161,3 +174,14 @@ class TavilyResearcher:
             )
             for item in payload.get("results", [])
         ]
+        emit_trace(
+            model="tool:tavily.search",
+            input_messages=[{"role": "tool_request", "content": json.dumps(request)}],
+            output_message=json.dumps(
+                [{"title": item.title, "url": item.url, "score": item.score} for item in results]
+            ),
+            latency_ms=int((perf_counter() - started) * 1000),
+            event_type="tool_call",
+            metadata={"tool_name": "tavily.search", "result_count": len(results)},
+        )
+        return results
