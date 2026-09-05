@@ -28,10 +28,21 @@ Classifier and judgment routes are separate, but intentionally default to
 Add `--research --research-context context.json` to permit at most four
 template-bound Tavily calls.
 
-The frontend can read `/runs/{run_id}`, post `/feedback`, and request
-`/voice/session?run_id=...`. The last endpoint mints an ElevenLabs signed URL;
-the API key remains server-side. Deploy or update the ElevenLabs agent only
-after the frontend proxy or FastAPI service has a public HTTPS URL:
+The Larry frontend discovers reports through `/runs`, loads the workbook shape
+from `/dashboard/{run_id}`, traverses `/runs/{run_id}/graph`, and posts grounded
+questions to `/chat`. Arithmetic remains in Python; the browser only renders
+validated figures and source node IDs.
+
+Larry's demo orb records in the browser, posts audio to `/voice/transcribe`,
+sends the transcript through the same grounded `/chat` path, and plays the
+validated answer from `/voice/speak`. These direct ElevenLabs speech endpoints
+require `ELEVENLABS_API_KEY`; `ELEVENLABS_VOICE_ID` is optional. The key never
+reaches the browser.
+
+`/voice/session?run_id=...` remains available for the full ElevenLabs Agents
+Platform flow. That optional flow also requires `ELEVENLABS_AGENT_ID`. Deploy or
+update the agent only after the frontend proxy or FastAPI service has a public
+HTTPS URL:
 
 ```bash
 .venv/bin/python backend/voice/deploy_agent.py --base-url https://api.example.com
