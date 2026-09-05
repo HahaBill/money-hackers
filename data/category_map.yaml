@@ -1,0 +1,9 @@
+leaves:
+  coffee_beans: ["beans", "coffee", "roaster", "green coffee"]
+  milk:         ["milk", "dairy", "oat milk", "alt milk"]
+  food:         ["pastry", "bakery", "food", "sandwich"]
+  packaging:    ["cups", "lids", "packaging", "napkins"]
+  labor:        ["wages", "payroll", "staff"]
+  rent:         ["rent", "lease", "occupancy"]
+  electricity:  ["electric", "power", "energy"]
+  other_opex:   ["insurance", "software", "marketing", "repairs", "cleaning", "fees"]
